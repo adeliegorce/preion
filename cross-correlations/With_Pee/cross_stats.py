@@ -1,0 +1,158 @@
+#!/usr/bin/env python
+# coding: utf-8
+
+# # Reionisation observables from the electron power spectrum
+
+import time
+import matplotlib.pyplot as plt
+from matplotlib import rc, colormaps, colors
+import numpy as np
+from astropy import cosmology, constants, units
+import os
+
+from theory import Pee_model
+from utils import plot_field_theta, plot_field, compute_cross_spectrum
+from simulations import gaussian_box_from_ps, gaussian_box_from_cl
+from tqdm import tqdm
+
+cos = cosmology.Planck18
+
+klog = np.logspace(-3, 2, 500)
+z = np.linspace(0, 20, 300)
+ells = np.linspace(200, 10000, 20)
+zarr = np.linspace(5., 15, 10)
+karr = np.logspace(-2, 2, 30)
+colorlist = ['#1f77b4', '#aec7e8', '#ff7f0e', '#ffbb78', '#2ca02c','#98df8a', '#d62728', '#ff9896', '#9467bd', '#c5b0d5','#8c564b', '#c49c94', '#e377c2', '#f7b6d2', '#7f7f7f','#c7c7c7', '#bcbd22', '#dbdb8d', '#17becf', '#9edae5']
+
+L = 500
+N = 512
+fov = 5. * units.deg
+
+CL = 68
+percentile1=(100-CL)/2
+percentile2=CL+(100-CL)/2
+
+nrand = 25
+
+datafiles = ['data/P21_tau_stats.npy', 'data/P21_ksz_stats.npy', 'data/Ptau_ksz_stats.npy']
+errfiles = ['data/P21_tau_err.npy', 'data/P21_ksz_err.npy', 'data/Ptau_ksz_err.npy']
+kfile = 'data/cross_stats_k.txt'
+
+if np.all([os.path.exists(file) for file in datafiles]):
+    print('Loading from files...')
+    P21_tau_list, P21_tau_err_list = np.load(datafiles[0]), np.load(errfiles[0])
+    P21_ksz_list, P21_ksz_err_list = np.load(datafiles[1]), np.load(errfiles[1])
+    Ptau_ksz_list, Ptau_ksz_err_list = np.load(datafiles[2]), np.load(errfiles[2])
+    k_P21_tau, k_P21_ksz, k_Ptau_ksz = np.loadtxt(kfile, unpack=True)
+
+else:
+
+    print('Generating global model...')
+    model = Pee_model(
+        h=cos.h,
+        Ob_0=cos.Ob0,
+        Om_0=cos.Om0,
+        verbose=False,
+        run_camb=True
+    )
+
+    # observables
+    ksz_ps = model.get_ksz(ells=ells, signal='both', Dells=True)
+    tau_ps = model.get_tau(ells=ells, signal='both', Dells=True)
+    ps_21 = model.get_p21(karr, zarr[:, None], mK=True, log=False, pk_units=True)
+
+    P21_tau_list, P21_tau_err_list = [], []
+    Ptau_ksz_list, Ptau_ksz_err_list = [], []
+    P21_ksz_list, P21_ksz_err_list = [], []
+
+    print('Simulating Gaussian realisations...')
+    for it in tqdm(range(nrand)):
+
+        # gaussian boxes
+        iz = 4
+        pk_array = np.c_[karr, ps_21[4]].T
+        box_21 = gaussian_box_from_ps(N, L, pk_array, ndim=3)
+
+        pk_array = np.c_[ells, ksz_ps[:, 0]/ells/(ells + 1)*2.0*np.pi/(model.T_cmb * 1e6) ** 2].T
+        ksz_box = gaussian_box_from_cl(
+            N, fov.to(units.rad).value, 
+            pk_array, ndim=3)
+
+        pk_array = np.c_[ells, (tau_ps[:, 0]+tau_ps[:, 1])/ells/(ells + 1)*2.0*np.pi/(model.T_cmb * 1e6) ** 2].T
+        tau_box = gaussian_box_from_cl(
+            N, fov.to(units.rad).value, 
+            pk_array, ndim=3)
+
+        # cross spectra
+        k_P21_ksz, P21_ksz, P21_ksz_err = compute_cross_spectrum(ksz_box, box_21, L, nbins=30)
+        P21_ksz_list.append(P21_ksz)
+        P21_ksz_err_list.append(P21_ksz_err)
+
+        k_P21_tau, P21_tau, P21_tau_err = compute_cross_spectrum(tau_box, box_21, L, nbins=30)
+        P21_tau_list.append(P21_tau)
+        P21_tau_err_list.append(P21_tau_err)
+
+        k_Ptau_ksz, Ptau_ksz, Ptau_ksz_err = compute_cross_spectrum(ksz_box, tau_box, L, nbins=30)
+        Ptau_ksz_list.append(Ptau_ksz)
+        Ptau_ksz_err_list.append(Ptau_ksz_err)
+
+    print('Saving...')
+    np.save(datafiles[0], P21_tau_list)
+    np.save(datafiles[1], P21_ksz_list)
+    np.save(datafiles[2], Ptau_ksz_list)
+
+    np.save(errfiles[0], P21_tau_err_list)
+    np.save(errfiles[1], P21_ksz_err_list)
+    np.save(errfiles[2], Ptau_ksz_err_list)
+
+    np.savetxt(kfile, np.c_[k_P21_tau, k_P21_ksz, k_Ptau_ksz])
+    print('Done.')
+
+fig, ax = plt.subplots()
+
+m = np.median(P21_ksz_list, axis=0)>0.
+print(np.sum(m)/P21_ksz_list[0].size)
+ax.fill_between(
+    k_P21_ksz[m],
+    np.percentile(P21_ksz_list, percentile2, axis=0)[m],
+    np.percentile(P21_ksz_list, percentile1, axis=0)[m],
+    color='plum', alpha=0.5
+)
+ax.semilogy(
+    k_P21_ksz[m], np.median(P21_ksz_list, axis=0)[m],
+    color='plum', linestyle='-', linewidth=2,
+    label=r'$P_{21\times \mathrm{kSZ}}$')
+
+m = np.median(P21_tau_list, axis=0)>0
+print(np.sum(m)/P21_tau_list[0].size)
+ax.fill_between(
+    k_P21_tau[m],
+    np.percentile(P21_tau_list, percentile2, axis=0)[m],
+    np.percentile(P21_tau_list, percentile1, axis=0)[m],
+    color='purple', alpha=0.5
+)
+ax.semilogy(
+    k_P21_tau[m], np.median(P21_tau_list, axis=0)[m],
+    color='purple', linestyle='-', linewidth=2,
+    label=r'$P_{21\times \tau}$')
+
+m = np.median(Ptau_ksz_list, axis=0)>0
+print(np.sum(m)/Ptau_ksz_list[0].size)
+ax.fill_between(
+    k_Ptau_ksz[m],
+    np.percentile(Ptau_ksz_list, percentile2, axis=0)[m],
+    np.percentile(Ptau_ksz_list, percentile1, axis=0)[m],
+    color='deeppink', alpha=0.5
+)
+ax.semilogy(
+    k_Ptau_ksz[m], np.median(Ptau_ksz_list, axis=0)[m],
+    color='deeppink', linestyle='-', linewidth=2,
+    label=r'$P_{\tau\times \mathrm{kSZ}}$')
+
+ax.set_xlabel(r'$k$ [Mpc$^{-1}]$')
+ax.set_ylabel(r'$P(k, z)$ [Mpc$^3]$')
+ax.legend()
+
+fig.tight_layout()
+fig.savefig('cross_stats.png', dpi=220)
+
