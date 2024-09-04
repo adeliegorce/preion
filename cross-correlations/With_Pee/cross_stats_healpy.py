@@ -30,6 +30,10 @@ hp_ls_interp = np.arange(int(ells.max()))
 ells_cross = np.arange(0, 2000, step=50)
 
 nside = 2048
+nrand = 25
+CL = 68
+percentile1=(100-CL)/2
+percentile2=CL+(100-CL)/2
 
 datafiles = ['data/P21_ksz_stats_healpy.npy', 'data/P21_2_ksz_stats_healpy.npy']
 corrfiles = ['data/r21_ksz_stats_healpy.npy', 'data/r21_2_ksz_stats_healpy.npy']
@@ -65,14 +69,8 @@ else:
     ps_21 = model.get_p21(karr, zarr[:, None], mK=True, log=False, pk_units=True)
 
     print('Looping over redshifts...')
-    binned_cl_ksz_21, binned_cl_ksz_21_2 = np.zeros((zarr.size, ells.size)),  np.zeros((zarr.size, ells.size))
-    binned_rl_ksz_21, binned_rl_ksz_21_2 = np.zeros((zarr.size, ells.size)),  np.zeros((zarr.size, ells.size))
-    for iz in tqdm(range(zarr.size)):
-        # gaussian boxes
-        cls_21 = ps_21[iz]  # mK2
-        ells_21 = karr * cos.comoving_distance(zarr[iz]).value
-        interp_p21 = interp1d(ells_21, cls_21, fill_value=0, bounds_error=False)
-        dTb_map = hp.synfast(interp_p21(hp_ls_interp), nside=nside, )  # mK
+    binned_cl_ksz_21, binned_cl_ksz_21_2 = np.zeros((nrand, zarr.size, ells.size)),  np.zeros((nrand, zarr.size, ells.size))
+    for j in tqdm(range(nrand)):
 
         cls_ksz = ksz_ps[:, 0]/ells/(ells+1)*2.*np.pi
         interp_ksz = interp1d(
@@ -81,27 +79,30 @@ else:
         )  # mK2
         ksz_map = hp.synfast(interp_ksz(hp_ls_interp), nside=nside, ) / 1e3  # mK
 
-        # cross spectra
-        cl_ksz_21 = hp.anafast(map1=ksz_map,  map2=dTb_map)
-        lrange = np.arange(cl_ksz_21.size)
-        binned_cl_ksz_21[iz] = bin_spectrum(
-            lrange,
-            cl_ksz_21*lrange*(lrange+1.)/2./np.pi,
-            ells_edges,
-        )
-        binned_rl_ksz_21[iz] = binned_cl_ksz_21[iz]/np.sqrt(cls_ksz)/np.sqrt(interp_p21(ells))
-        np.save(datafiles[0], binned_cl_ksz_21)
-        np.save(corrfiles[0], binned_rl_ksz_21)
+        for iz in range(zarr.size):
+            # gaussian boxes
+            cls_21 = ps_21[iz]  # mK2
+            ells_21 = karr * cos.comoving_distance(zarr[iz]).value
+            interp_p21 = interp1d(ells_21, cls_21, fill_value=0, bounds_error=False)
+            dTb_map = hp.synfast(interp_p21(hp_ls_interp), nside=nside, )  # mK
 
-        cl_ksz_21_2 = hp.anafast(map1=ksz_map,  map2=dTb_map**2)
-        binned_cl_ksz_21_2[iz] = bin_spectrum(
-            lrange,
-            cl_ksz_21_2*lrange*(lrange+1.)/2./np.pi,
-            ells_edges,
-        )
-        binned_rl_ksz_21_2[iz] = binned_cl_ksz_21_2[iz]/np.sqrt(cls_ksz)/np.sqrt(interp_p21(ells))
-        np.save(datafiles[1], binned_cl_ksz_21_2)
-        np.save(corrfiles[1], binned_rl_ksz_21_2)
+            # cross spectra
+            cl_ksz_21 = hp.anafast(map1=ksz_map,  map2=dTb_map)
+            lrange = np.arange(cl_ksz_21.size)
+            binned_cl_ksz_21[j, iz] = bin_spectrum(
+                lrange,
+                cl_ksz_21*lrange*(lrange+1.)/2./np.pi,
+                ells_edges,
+            )
+            np.save(datafiles[0], binned_cl_ksz_21)
+
+            cl_ksz_21_2 = hp.anafast(map1=ksz_map,  map2=dTb_map**2)
+            binned_cl_ksz_21_2[j, iz] = bin_spectrum(
+                lrange,
+                cl_ksz_21_2*lrange*(lrange+1.)/2./np.pi,
+                ells_edges,
+            )
+            np.save(datafiles[1], binned_cl_ksz_21_2)
 
     print('Done.')
 
@@ -110,40 +111,40 @@ norm = colors.LogNorm(vmin=5e-4, vmax=1.)
 
 fig, ax = plt.subplots()
 for iz in range(zarr.size):
-    ax.plot(ells, binned_cl_ksz_21[iz]*ells*(ells+1)/2./np.pi, color=cmap(norm(model.xe(zarr[iz])[0]/model.f)))
+    ax.fill_between(
+        ells,
+        np.percentile(binned_cl_ksz_21[:, iz, :], percentile2, axis=0)*ells*(ells+1)/2./np.pi,
+        np.percentile(binned_cl_ksz_21[:, iz, :], percentile1, axis=0)*ells*(ells+1)/2./np.pi,
+        color=cmap(norm(model.xe(zarr[iz])[0]/model.f)), alpha=0.5
+    )
+    ax.plot(
+        ells,
+        np.median(binned_cl_ksz_21[:, iz, :], axis=0)*ells*(ells+1)/2./np.pi,
+        color=cmap(norm(model.xe(zarr[iz])[0]/model.f))
+    )
 ax.set_xlabel(r'Multipole $\ell$')
 ax.set_ylabel(r'$\ell(\ell+1)C_\ell^{\mathrm{kSZ}\times \delta T_b}/2\pi$ [mK$^2$]')
 sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
 c_bar = plt.colorbar(sm, fraction=0.05, label=r'$x_e$', ax=ax)
 fig.tight_layout()
-fig.savefig('figures/cl_kszx21_vs_z.png', dpi=220)
+fig.savefig('figures/cl_kszx21_vs_z_stats.png', dpi=220)
 
 fig, ax = plt.subplots()
 for iz in range(zarr.size):
-    ax.plot(ells, binned_rl_ksz_21[iz]*ells*(ells+1)/2./np.pi, color=cmap(norm(model.xe(zarr[iz])[0]/model.f)))
-ax.set_xlabel(r'Multipole $\ell$')
-ax.set_ylabel(r'$\ell(\ell+1)C_\ell^{\mathrm{kSZ}\times \delta T_b}/2\pi$ [mK$^2$]')
-sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
-c_bar = plt.colorbar(sm, fraction=0.05, label=r'$x_e$', ax=ax)
-fig.tight_layout()
-fig.savefig('figures/r_kszx21_vs_z.png', dpi=220)
-
-fig, ax = plt.subplots()
-for iz in range(zarr.size):
-    ax.plot(ells, binned_cl_ksz_21_2[iz]*ells*(ells+1)/2./np.pi, color=cmap(norm(model.xe(zarr[iz])[0]/model.f)))
-ax.set_xlabel(r'Multipole $\ell$')
-ax.set_ylabel(r'$\ell(\ell+1)C_\ell^{\mathrm{kSZ}\times \delta T_b^2}/2\pi$')
-sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
-c_bar = plt.colorbar(sm, fraction=0.05, label=r'$x_e$', ax=ax)
-fig.tight_layout()
-fig.savefig('figures/cl_kszx212_vs_z.png', dpi=220)
-
-fig, ax = plt.subplots()
-for iz in range(zarr.size):
-    ax.plot(ells, binned_rl_ksz_21_2[iz]*ells*(ells+1)/2./np.pi, color=cmap(norm(model.xe(zarr[iz])[0]/model.f)))
+    ax.fill_between(
+        ells,
+        np.percentile(binned_cl_ksz_21_2[:, iz, :], percentile2, axis=0)*ells*(ells+1)/2./np.pi,
+        np.percentile(binned_cl_ksz_21_2[:, iz, :], percentile1, axis=0)*ells*(ells+1)/2./np.pi,
+        color=cmap(norm(model.xe(zarr[iz])[0]/model.f)), alpha=0.5
+    )
+    ax.plot(
+        ells,
+        np.median(binned_cl_ksz_21_2[:, iz, :], axis=0)*ells*(ells+1)/2./np.pi,
+        color=cmap(norm(model.xe(zarr[iz])[0]/model.f))
+    )
 ax.set_xlabel(r'Multipole $\ell$')
 ax.set_ylabel(r'$\ell(\ell+1)C_\ell^{\mathrm{kSZ}\times \delta T_b^2}/2\pi$')
 sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
 c_bar = plt.colorbar(sm, fraction=0.05, label=r'$x_e$', ax=ax)
 fig.tight_layout()
-fig.savefig('figures/r_kszx212_vs_z.png', dpi=220)
+fig.savefig('figures/cl_kszx212_vs_z_stats.png', dpi=220)
