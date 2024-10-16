@@ -42,8 +42,13 @@ if np.all([os.path.exists(file) for file in datafiles]):
     print('Loading from files...')
     binned_cl_ksz_21 = np.load(datafiles[0])
     binned_cl_ksz_21_2 = np.load(datafiles[1])
-    binned_rl_ksz_21 = np.load(corrfiles[0])
-    binned_rl_ksz_21_2 = np.load(corrfiles[1])
+    # binned_rl_ksz_21 = np.load(corrfiles[0])
+    # binned_rl_ksz_21_2 = np.load(corrfiles[1])
+
+    imin = np.where(np.any(binned_cl_ksz_21[:, -1, :], axis=-1))[0][-1]
+    print(imin/nrand)
+    binned_cl_ksz_21 = binned_cl_ksz_21[:imin]
+    binned_cl_ksz_21_2 = binned_cl_ksz_21_2[:imin]
     model = Pee_model(
         h=cos.h,
         Ob_0=cos.Ob0,
@@ -108,43 +113,48 @@ else:
 
 cmap = colormaps['viridis']
 norm = colors.LogNorm(vmin=5e-4, vmax=1.)
+nz = zarr.size
 
-fig, ax = plt.subplots()
-for iz in range(zarr.size):
-    ax.fill_between(
+fig, axes = plt.subplots(2, nz//2, figsize=(15, 8), sharex=True, sharey=True)
+for iz in range(nz):
+    axes[iz//(nz//2), iz%(nz//2)].fill_between(
         ells,
         np.percentile(binned_cl_ksz_21[:, iz, :], percentile2, axis=0)*ells*(ells+1)/2./np.pi,
         np.percentile(binned_cl_ksz_21[:, iz, :], percentile1, axis=0)*ells*(ells+1)/2./np.pi,
         color=cmap(norm(model.xe(zarr[iz])[0]/model.f)), alpha=0.5
     )
-    ax.plot(
+    axes[iz//(nz//2), iz%(nz//2)].plot(
         ells,
         np.median(binned_cl_ksz_21[:, iz, :], axis=0)*ells*(ells+1)/2./np.pi,
         color=cmap(norm(model.xe(zarr[iz])[0]/model.f))
     )
-ax.set_xlabel(r'Multipole $\ell$')
-ax.set_ylabel(r'$\ell(\ell+1)C_\ell^{\mathrm{kSZ}\times \delta T_b}/2\pi$ [mK$^2$]')
-sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
-c_bar = plt.colorbar(sm, fraction=0.05, label=r'$x_e$', ax=ax)
+    axes[iz//(nz//2), iz%(nz//2)].set_title(rf'$x_e={model.xe(zarr[iz])[0]:.4f}$')
+    axes[iz//(nz//2), iz%(nz//2)].axhline(0, color='k', ls=':')
+    if iz >= (nz//2):
+        axes[iz//(nz//2), iz%(nz//2)].set_xlabel(r'Multipole $\ell$')
+    if iz == 0 or iz == nz//2:
+        axes[iz//(nz//2), iz%(nz//2)].set_ylabel(r'$\ell(\ell+1)C_\ell^{\mathrm{kSZ}\times \delta T_b}/2\pi$')
 fig.tight_layout()
 fig.savefig('figures/cl_kszx21_vs_z_stats.png', dpi=220)
 
-fig, ax = plt.subplots()
-for iz in range(zarr.size):
-    ax.fill_between(
+fig, axes = plt.subplots(2, nz//2, figsize=(15, 8), sharex=True, sharey=True)
+for iz in range(nz):
+    axes[iz//(nz//2), iz%(nz//2)].fill_between(
         ells,
         np.percentile(binned_cl_ksz_21_2[:, iz, :], percentile2, axis=0)*ells*(ells+1)/2./np.pi,
         np.percentile(binned_cl_ksz_21_2[:, iz, :], percentile1, axis=0)*ells*(ells+1)/2./np.pi,
         color=cmap(norm(model.xe(zarr[iz])[0]/model.f)), alpha=0.5
     )
-    ax.plot(
+    axes[iz//(nz//2), iz%(nz//2)].plot(
         ells,
         np.median(binned_cl_ksz_21_2[:, iz, :], axis=0)*ells*(ells+1)/2./np.pi,
         color=cmap(norm(model.xe(zarr[iz])[0]/model.f))
     )
-ax.set_xlabel(r'Multipole $\ell$')
-ax.set_ylabel(r'$\ell(\ell+1)C_\ell^{\mathrm{kSZ}\times \delta T_b^2}/2\pi$')
-sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
-c_bar = plt.colorbar(sm, fraction=0.05, label=r'$x_e$', ax=ax)
+    axes[iz//(nz//2), iz%(nz//2)].set_title(rf'$x_e={model.xe(zarr[iz])[0]:.4f}$')
+    axes[iz//(nz//2), iz%(nz//2)].axhline(0, color='k', ls=':')
+    if iz >= (nz//2):
+        axes[iz//(nz//2), iz%(nz//2)].set_xlabel(r'Multipole $\ell$')
+    if iz == 0 or iz == nz//2:
+        axes[iz//(nz//2), iz%(nz//2)].set_ylabel(r'$\ell(\ell+1)C_\ell^{\mathrm{kSZ}\times \delta T_b^2}/2\pi$')
 fig.tight_layout()
 fig.savefig('figures/cl_kszx212_vs_z_stats.png', dpi=220)
