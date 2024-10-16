@@ -82,6 +82,7 @@ class Pee_model:
         Om_0=0.309,
         A_s=2.139e-9,
         n_s=0.9677,
+        r=0.,
         verbose=False,
         run_CMB=False,
         cosmomc=False,
@@ -155,6 +156,9 @@ class Pee_model:
             n_s (float)
                 Scalar spectral index.
                 Default is 0.9677.
+            r (float)
+                Primordial GW.
+                Default is 0.
             verbose (boolean)
                 If True, run in verbose mode.
                 Default is False.
@@ -194,6 +198,7 @@ class Pee_model:
         self.thetaMC = thetaMC
         self.T_cmb = T_cmb
         self.n_s = n_s
+        self.r = r
 
         if cosmomc:
             self.obh2 = Ob_0
@@ -227,7 +232,7 @@ class Pee_model:
                     pars.Reion.dz = dz_h
                 else:
                     pars.Reion.delta_redshift = dz_h
-                pars.InitPower.set_params(ns=self.n_s, r=0, As=self.A_s)
+                pars.InitPower.set_params(ns=self.n_s, r=self.r, As=self.A_s)
                 results = camb.get_results(pars)
                 self.thetaMC = results.cosmomc_theta()
             self.Ob_0 = self.obh2 / self.h**2
@@ -252,7 +257,7 @@ class Pee_model:
                 pars.Reion.dz = dz_h
             else:
                 pars.Reion.delta_redshift = dz_h
-            pars.InitPower.set_params(ns=self.n_s, r=0, As=self.A_s)
+            pars.InitPower.set_params(ns=self.n_s, r=self.r, As=self.A_s)
             results = camb.get_results(pars)
             self.thetaMC = results.cosmomc_theta()
 
@@ -482,6 +487,10 @@ class Pee_model:
         """
 
         if self.asym_h_reion:
+            self.zend_h = self.zre_h - self.dz_h
+        else:
+            self.zend_h = self.zre_h - self.dz_h / 2.0
+        if self.asym_h_reion:
             self.alpha = np.log(.5) / np.log(
                 (self.z_early - self.zre_h) / (self.z_early - self.zend_h)
             )
@@ -503,7 +512,7 @@ class Pee_model:
         pars.set_cosmology(
             H0=self.H0, ombh2=self.obh2, omch2=self.och2, TCMB=self.T_cmb
         )  # ,tau=self.tau)
-        pars.InitPower.set_params(ns=self.n_s, r=0, As=self.A_s)
+        pars.InitPower.set_params(ns=self.n_s, r=self.r, As=self.A_s)
         pars.WantTransfer = True
         # pars.Reion.set_tau(self.tau)
         pars.Reion.use_optical_depth = False
@@ -516,7 +525,7 @@ class Pee_model:
 
         return pars
 
-    def get_primary_spectra(self, ells=None, results=None):
+    def get_primary_spectra(self, ells=None, results=None, unit='muK', Dells=True, type='total'):
         """
         Compute primary power spectra for KSZ_power object.
 
@@ -528,6 +537,18 @@ class Pee_model:
                 If None, use np.arange(0, 2000).
             results: CAMB.results object
                 Can be fed to avoid computing results twice.
+            unit: str
+                Unit to get results in. Similar to CAMB.
+                Default is 'muK'.
+            Dells: boolean
+                Whether to compute Dl=l(l+1)Cl/2pi or raw Cls.
+                Default is True.
+            type: str
+                Type of spectrum to compute. Options are
+                ['total', 'unlensed_scalar', 'unlensed_total',
+                'lensed_scalar', 'tensor', 'lens_potential']-
+                similar to CAMB.
+                Default is 'total'.
 
         Outputs
         -------
@@ -536,6 +557,7 @@ class Pee_model:
             Second column is TT.
             Third column is EE.
             Fourth column is TE.
+            Fifth column is BB.
         """
         ells = np.array(ells, dtype=int)
         if ells is None:
@@ -555,8 +577,9 @@ class Pee_model:
 
         if self.verbose:
             print(" Computing CMB power spectra...")
-        powers = results.get_cmb_power_spectra(pars, CMB_unit="muK", lmax=lmax)
-        CL = powers["total"]  # ["unlensed_scalar"]
+        powers = results.get_cmb_power_spectra(
+            pars, CMB_unit=unit, lmax=lmax, raw_cl=not Dells)
+        CL = powers[type]
         ls = np.arange(CL.shape[0])
         CMB_Cells = np.c_[ls, CL[:, 0], CL[:, 1], CL[:, 3]]  # tt, ee, te
         if ells is None or np.size(ells) == 1:
@@ -567,6 +590,7 @@ class Pee_model:
                 interp1d(ls, CL[:, 0])(ells),
                 interp1d(ls, CL[:, 1])(ells),
                 interp1d(ls, CL[:, 3])(ells),
+                interp1d(ls, CL[:, 2])(ells)
             ]
 
     # @profile
@@ -907,18 +931,18 @@ class Pee_model:
         Pee_z_integ = self.Pee(k_z_integ, z_integ)
         self.check_ps(Pee_z_integ)
 
-        prefac = (constants.c.value**2  # speed of light
-                  * constants.sigma_T.value**2  # Thomson cross section [m-2]
-                  * self.nh**2  # baryon nb density [m-3]
+        prefac = (constants.c.si  # speed of light
+                  * constants.sigma_T.si**2  # Thomson cross section [m    2]
+                  * (self.nh / units.m**3)**2  # baryon nb density [m-3]
                   )
 
         # Compute C_tau(ell) integrand, unit 1
         C_ell_tau_integrand = (
             self.xe(z_integ)**2
-            / cos.H(z_integ).si.value**2
+            / cos.H(z_integ).si
             * (1. + z_integ)**4
-            / cos.comoving_distance(z_integ).value**2
-            * Pee_z_integ
+            / cos.comoving_distance(z_integ).si**2
+            * Pee_z_integ * (units.Mpc).si**3
         ) * prefac
 
         # Compute C_kSZ(ell), no units
@@ -950,6 +974,156 @@ class Pee_model:
             return C_ells
         else:
             return self.Cl_to_Dl(ells, C_ells) / (self.T_cmb * 1e6) ** 2
+
+    def get_B_modes(self, ells, Dells=True, Qrms=17.0):
+        """
+        Compute angular power spectrum of total EoR-induced B-modes at ell.
+
+        Parameters
+        ----------
+            ells: array of floats
+                Angular multipole to compute the spectrum at.
+            Dells: boolean
+                If True, give the results in terms of
+                D(l) = l(l+1)Cl/2/pi.
+                Default is False.
+            Qrms: float
+                rms of the primary quadrupole, in uK, taken constant
+                with redshift. Default is 17uK.
+        Outputs
+        ------
+            Array B-mode power at ells, in uK2.
+        """
+        return np.sum(self.get_scattering_B_modes(ells=ells, Dells=Dells, signal='both', Qrms=Qrms), axis=1) + self.get_screening_B_modes(ells=ells, Dells=Dells)
+
+    def get_scattering_B_modes(self, ells, signal="patchy", Dells=True, Qrms=17.0):
+        """
+        Compute angular power spectrum of scattering B-modes for given model at ell.
+
+        Parameters
+        ----------
+            ells: array of floats
+                Angular multipole to compute the spectrum at.
+            signal: str
+                Wich signal to compute.
+                Options are 'late-time', 'patchy' or 'both'.
+                Default is patchy.
+            Dells: boolean
+                If True, give the results in terms of
+                D(l) = l(l+1)Cl/2/pi.
+                Default is False.
+            Qrms: float
+                rms of the primary quadrupole, in uK, taken constant
+                with redshift. Default is 17uK.
+        Outputs
+        ------
+            Tuple of (patchy, late-time) B-mode power at ell, in uK2.
+        """
+
+        if signal == "late-time":
+            g = z_integ < self.zend_h
+        elif signal == "both":
+            g = np.ones(z_integ.size, dtype=bool)
+        elif signal == "patchy":
+            g = z_integ >= self.zend_h
+        else:
+            raise ValueError("signal must be both, patchy, or late-time.")
+
+        cos = cosmology.FlatLambdaCDM(
+            H0=self.h * 100, Tcmb0=self.T_cmb, Ob0=self.Ob_0, Om0=self.Om_0
+        )
+
+        ells = np.atleast_1d(ells)
+        kmax_ells = np.max(ells) / cos.comoving_distance(z_integ.min()).value
+
+        if not self.has_camb_run or kmax_ells > kmax_camb:
+            warnings.warn('Re-running CAMB...')
+            self.run_camb(kmax=kmax_ells)
+
+        # Define integration ranges
+        k_z_integ = ells[:, None] / cos.comoving_distance(z_integ).value  # [Mpc-1]
+        if (k_z_integ.min() < kmin_camb) or (k_z_integ.max() > kmax_camb):
+            raise ValueError("Extrapolating the matter PK too far.")
+
+        Pee_z_integ = self.Pee(k_z_integ, z_integ)
+        self.check_ps(Pee_z_integ)
+
+        prefac = (constants.c.si  # speed of light
+                  * constants.sigma_T.si**2  # Thomson cross section [m-2]
+                  * (self.nh / units.m**3)**2  # baryon nb density [m-3]
+                  ) * 3. / 100.
+
+        # Compute C_tau(ell) integrand, unit 1
+        C_ell_BB_integrand = (
+            prefac
+            * self.xe(z_integ)**2
+            / cos.H(z_integ).si
+            * (1. + z_integ)**4
+            / cos.comoving_distance(z_integ).si**2
+            * Pee_z_integ * (units.Mpc).si**3
+            * np.exp(-2. * self.tau_z_integ)
+        )
+
+        # Compute C_kSZ(ell), no units
+        result = np.array(
+            [trapz(C_ell_BB_integrand[i], z_integ[g])
+             for i in range(ells.size)]
+        ) * Qrms**2  # rms of the primary quadrupole [uK]
+        self.check_result(result)
+
+        if signal == "both":
+            gp = z_integ >= self.zend_h
+            pBB = np.array(
+                [
+                    trapz(C_ell_BB_integrand[i][gp], z_integ[gp])
+                    for i in range(ells.size)
+                ]
+            )
+            self.check_result(pBB)
+            hBB = result - pBB
+        elif signal == "patchy":
+            pBB = np.copy(result)
+            hBB = np.zeros(result.shape)
+        else:
+            pBB = np.zeros(result.shape)
+            hBB = np.copy(result)
+        C_ells = np.c_[pBB, hBB]
+
+        if not Dells:
+            return C_ells
+        else:
+            return self.Cl_to_Dl(ells, C_ells) / (self.T_cmb * 1e6) ** 2
+
+    def get_screening_B_modes(self, ells, Dells=True):
+        """
+        Compute angular power spectrum of scattering B-modes for given model at ell.
+
+        Parameters
+        ----------
+            ells: array of floats
+                Angular multipole to compute the spectrum at.
+            Dells: boolean
+                If True, give the results in terms of
+                D(l) = l(l+1)Cl/2/pi.
+                Default is False.
+        Outputs
+        ------
+            Tuple of (patchy, late-time) B-mode power at ell, in uK2.
+        """
+        ell_integ = np.arange(1, 3000)
+        # primary EE modes
+        Cell_EE_p = self.get_primary_spectra(ells=ell_integ, Dells=False, unit='muK')[:, 2]
+        # tau tau ps (patchy+late-time)
+        Cell_tt = np.sum(self.get_tau(ells=ell_integ, signal='both', Dells=False), axis=1)
+        # cl bb
+        prefac = 1. / 8. / np.pi**2 * np.exp(-2. * self.xe2tau(z=np.linspace(0, 20, 300))[0])
+        CBB_screen = np.trapz(Cell_EE_p*Cell_tt, ell_integ) * prefac
+        CBB_screen *= np.ones(ells.size)
+
+        if not Dells:
+            return CBB_screen
+        else:
+            return self.Cl_to_Dl(ells, CBB_screen)[:, 0] / (self.T_cmb * 1e6) ** 2
 
     def check_ps(self, ps, include_zero=True):
         """
