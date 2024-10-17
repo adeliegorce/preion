@@ -11,7 +11,7 @@ from astropy import cosmology, constants, units
 import os
 
 from theory import Pee_model
-from utils import plot_field_theta, plot_field, compute_cross_spectrum
+from utils import compute_cross_angular_spectrum
 from simulations import gaussian_box_from_ps, gaussian_box_from_cl
 from tqdm import tqdm
 
@@ -85,15 +85,15 @@ else:
             pk_array, ndim=3)
 
         # cross spectra
-        l_Cl21_ksz, Cl21_ksz, Cl21_ksz_err = compute_angular_cross_spectrum(ksz_box, box_21, fov.to(units.rad).value, nbins=30)
+        l_Cl21_ksz, Cl21_ksz, Cl21_ksz_err = compute_cross_angular_spectrum(ksz_box, box_21, fov.to(units.rad).value, nbins=30)
         Cl21_ksz_list.append(Cl21_ksz)
         Cl21_ksz_err_list.append(Cl21_ksz_err)
 
-        l_Cl21_tau, Cl21_tau, Cl21_tau_err = compute_angular_cross_spectrum(tau_box, box_21, fov.to(units.rad).value, nbins=30)
+        l_Cl21_tau, Cl21_tau, Cl21_tau_err = compute_cross_angular_spectrum(tau_box, box_21, fov.to(units.rad).value, nbins=30)
         Cl21_tau_list.append(Cl21_tau)
         Cl21_tau_err_list.append(Cl21_tau_err)
 
-        l_Cltau_ksz, Cltau_ksz, Cltau_ksz_err = compute_angular_cross_spectrum(ksz_box, tau_box, fov.to(units.rad).value, nbins=30)
+        l_Cltau_ksz, Cltau_ksz, Cltau_ksz_err = compute_cross_angular_spectrum(ksz_box, tau_box, fov.to(units.rad).value, nbins=30)
         Cltau_ksz_list.append(Cltau_ksz)
         Cltau_ksz_err_list.append(Cltau_ksz_err)
 
