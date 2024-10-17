@@ -16,6 +16,7 @@ from simulations import gaussian_box_from_ps, gaussian_box_from_cl
 from tqdm import tqdm
 
 cos = cosmology.Planck18
+T_cmb = 2.7255
 
 klog = np.logspace(-3, 2, 500)
 z = np.linspace(0, 20, 300)
@@ -109,11 +110,12 @@ else:
     np.savetxt(lfile, np.c_[l_Cl21_tau, l_Cl21_ksz, l_Cltau_ksz])
     print('Done.')
 
+
 fig, ax = plt.subplots()
 
 m = np.median(Cl21_ksz_list, axis=0) != 0.
 print(np.sum(m)/Cl21_ksz_list[0].size)
-prefac = l_Cl21_ksz[m] * (l_Cl21_ksz[m]+1.)/2./np.pi * (model.T_cmb * 1e6)
+prefac = l_Cl21_ksz[m] * (l_Cl21_ksz[m]+1.)/2./np.pi * (T_cmb * 1e6)
 ax.fill_between(
     l_Cl21_ksz[m],
     np.percentile(Cl21_ksz_list, percentile2, axis=0)[m] * prefac,
@@ -127,7 +129,7 @@ ax.plot(
 
 m = np.median(Cl21_tau_list, axis=0) != 0.
 print(np.sum(m)/Cl21_tau_list[0].size)
-prefac = l_Cl21_tau[m] * (l_Cl21_tau[m]+1.)/2./np.pi * (model.T_cmb * 1e6)
+prefac = l_Cl21_tau[m] * (l_Cl21_tau[m]+1.)/2./np.pi * (T_cmb * 1e6)
 ax.fill_between(
     l_Cl21_tau[m],
     np.percentile(Cl21_tau_list, percentile2, axis=0)[m] * prefac,
@@ -141,7 +143,7 @@ ax.plot(
 
 m = np.median(Cltau_ksz_list, axis=0) != 0.
 print(np.sum(m)/Cltau_ksz_list[0].size)
-prefac = l_Cltau_ksz[m] * (l_Cltau_ksz[m]+1.)/2./np.pi * (model.T_cmb * 1e6)
+prefac = l_Cltau_ksz[m] * (l_Cltau_ksz[m]+1.)/2./np.pi * (T_cmb * 1e6)
 ax.fill_between(
     l_Cltau_ksz[m],
     np.percentile(Cltau_ksz_list, percentile2, axis=0)[m] * prefac,
@@ -153,11 +155,10 @@ ax.plot(
     color='deeppink', linestyle='-', linewidth=2,
     label=r'$Cl_{\tau\times \mathrm{kSZ}}$')
 
-ax.set_yscale('symlog', linthresh=1e-8)
+# ax.set_yscale('symlog', linthresh=1e-8)
 ax.set_xlabel(r'Multipole $\ell$')
 ax.set_ylabel(r'$\mathcal{D}_\ell$ [$\mu$K$^2$]')
 ax.legend(frameon=False)
 
 fig.tight_layout()
 fig.savefig('cross_stats.png', dpi=220)
-
