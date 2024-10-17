@@ -42,7 +42,7 @@ def gaussian_box_from_cl(N, fov, pk_array, ndim=2):
     assert pk_array.shape[0] == 2
     pk_prior = interp1d(pk_array[0], pk_array[1], fill_value=0., bounds_error=False)
 
-    k_x = np.pi * np.fft.fftfreq(N, d=fov/N)
+    k_x = np.pi * np.fft.fftfreq(N, d=fov/2./N)
     a = np.power(k_x, 2)[:, None] + np.power(k_x, 2)
     if ndim == 1:
         kbox = np.abs(k_x)
