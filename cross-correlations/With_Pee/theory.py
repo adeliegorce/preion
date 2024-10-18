@@ -15,6 +15,8 @@ from scipy.integrate import cumtrapz, simps, trapz
 from scipy.interpolate import interp1d
 
 from parameters import *
+from utils import *
+from simulations import *
 
 ##################################
 # Integration/precision settings #
@@ -1124,6 +1126,9 @@ class Pee_model:
             return CBB_screen
         else:
             return self.Cl_to_Dl(ells, CBB_screen)[:, 0] / (self.T_cmb * 1e6) ** 2
+
+
+
 
     def check_ps(self, ps, include_zero=True):
         """
