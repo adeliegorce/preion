@@ -1,7 +1,8 @@
 import matplotlib.pyplot as plt
 from matplotlib import rc, colormaps, colors
 import numpy as np
-
+from astropy import cosmology, units
+import simulations
 
 def plot_field(box, L, iz=None, label='', **kwargs):
 
@@ -123,7 +124,7 @@ def compute_cl_from_box(field, theta, nbins=30):
     maxk = 0.5 * 2.*np.pi/deltax  # Nyquist-Shannon
 
     # k-grid, units 1/Mpc
-    k_x = np.fft.fftfreq(int(N), d=deltax/np.pi/2.)
+    k_x = np.fft.fftfreq(int(N), d=theta/N/np.pi/2.)
     a = np.power(k_x, 2)[:, None] + np.power(k_x, 2)
     if field.ndim == 2:
         k_norm = np.sqrt(a)
@@ -168,7 +169,7 @@ def compute_cl_from_box(field, theta, nbins=30):
     # pk_err = np.where(count != 0, np.sqrt(pk2-pk**2)/np.sqrt(count), 0.)
     pk_err = np.multiply(
         np.sqrt(pk2-pk**2),
-        np.where(count != 0, 1./np.sqrt(count), 0.))
+        np.where(count > 0, 1./np.sqrt(count), 0.))
 
     return k, pk, pk_err
 
@@ -297,6 +298,44 @@ def compute_cross_angular_spectrum(field1, field2, theta, nbins=30):
         np.where(count > 0, 1./np.sqrt(count), 0.))
 
     return k, pk, pk_err
+
+
+def get_cross_spectrum(
+        pk_array1, pk_array2, xi=1., is_21=1, z21=8.,
+        ndim=3, N=512, fov=5.*units.deg, cos=cosmology.Planck18,
+        nbins=30,
+        ):
+
+    size = tuple([N for i in range(ndim)])
+    phases_1 = np.random.random(size) * 2. * np.pi
+    phases_2 = phases_1 + (xi - 1.)/2. * np.pi
+    # 21
+    if is_21 > 0:
+        L21 = np.tan(fov.to(units.rad).value/2.) \
+            * 2. * cos.comoving_distance(z21).value
+        box1 = simulations.gaussian_box_from_ps(
+            N, L21, pk_array1 if is_21 == 1 else pk_array2,
+            ndim=ndim, phases=phases_1,
+        )
+        box2 = simulations.gaussian_box_from_cl(
+            N, fov.to(units.rad).value,
+            pk_array2 if is_21 == 1 else pk_array1,
+            ndim=ndim, phases=phases_2)
+    else:
+        box1 = simulations.gaussian_box_from_cl(
+            N, fov.to(units.rad).value,
+            pk_array1,
+            ndim=ndim, phases=phases_1,
+        )
+        box2 = simulations.gaussian_box_from_cl(
+            N, fov.to(units.rad).value,
+            pk_array2, ndim=ndim, phases=phases_2)
+
+    l, cl, errl = compute_cross_angular_spectrum(
+        box1, box2,
+        fov.to(units.rad).value, nbins=nbins
+    )
+    return l, cl * np.pi / 2., errl * np.pi / 2.
 
 
 def bin_spectrum(ls, spectrum, bin_edges):
