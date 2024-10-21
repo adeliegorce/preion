@@ -6,7 +6,7 @@ from scipy.stats import halfnorm
 def gaussian_box_from_ps(
         N, L, pk_array, ndim=2,
         phases=None,
-    ):
+        ):
 
     assert pk_array.shape[0] == 2
     pk_prior = interp1d(
@@ -44,7 +44,7 @@ def gaussian_box_from_ps(
     widths = np.sqrt(powerbox)
     a = halfnorm.rvs(
         loc=means,
-        scale=widths/widths.max()/np.sqrt(1.-2./np.pi),
+        scale=widths/widths.max(),  # /np.sqrt(1.-2./np.pi),
         size=size,
     ) * widths.max()  # Mpc3, modules > 0
     # a = np.random.normal(
