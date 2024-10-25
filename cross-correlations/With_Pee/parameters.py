@@ -15,6 +15,7 @@ z_max = 20.0
 
 T_cmb = 2.7255
 Yp = 0.2453
+nu21_ref = 1420. # MHz
 
 # REIONISATION PARAMETERS
 

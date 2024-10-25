@@ -1127,7 +1127,100 @@ class Pee_model:
         else:
             return self.Cl_to_Dl(ells, CBB_screen)[:, 0] / (self.T_cmb * 1e6) ** 2
 
+    def get_tau_21_cross(self, z21, ells, Dells=True, delta_nu=0.):
+        """
+        Compute angular cross spectrum of tau and 21cm at ell, in muK.
 
+        Parameters
+        ----------
+            z21: float
+                Redshift of the observed 21cm signal.
+            ells: array of floats
+                Angular multipole to compute the spectrum at.
+            Dells: boolean
+                If True, give the results in terms of
+                D(l) = l(l+1)Cl/2/pi.
+                Default is False.
+            delta_nu: float
+                Width of the top-hat function representing the
+                frequency resolution of the interferometer.
+                Default is zero (Dirac delta).
+        Outputs
+        ------
+            Array of cross-power for ells, in uK2.
+        """
+        cos = cosmology.FlatLambdaCDM(
+            H0=self.h * 100, Tcmb0=self.T_cmb, Ob0=self.Ob_0, Om0=self.Om_0
+        )
+
+        ells = np.atleast_1d(ells)
+        kmax_ells = np.max(ells) / cos.comoving_distance(z_integ.min()).value
+
+        if not self.has_camb_run or kmax_ells > kmax_camb:
+            warnings.warn('Re-running CAMB...')
+            self.run_camb(kmax=kmax_ells)
+
+        # Define integration ranges
+        k_z_integ = ells[:, None] / cos.comoving_distance(z_integ).value  # [Mpc-1]
+        if (k_z_integ.min() < kmin_camb) or (k_z_integ.max() > kmax_camb):
+            raise ValueError("Extrapolating the matter PK too far.")
+
+        Pee_z_integ = self.Pee(k_z_integ, z_integ)
+        self.check_ps(Pee_z_integ)
+
+        Pbb_z_integ = self.bdH(k_z_integ, z_integ) * self.Pk(k_z_integ, z_integ)
+        self.check_ps(Pbb_z_integ)
+
+        W21_z_integ = np.zeros_like(z_integ)
+        if delta_nu == 0.:
+            iz21 = np.argmin(np.abs(z_integ - z21))
+            W21_z_integ[iz21] = 1.
+        else:
+            nu21 = nu21_ref / (1. + z21) # MHz
+            numax = nu21 + delta_nu/2.
+            numin = nu21 - delta_nu/2.
+            zmax = (nu21_ref / numin) - 1.
+            zmin = (nu21_ref / numax) - 1.
+            mask = (z_integ < zmax) & (z_integ >= zmin)
+            W21_z_integ[mask] = (1.+zmin)*(1.+zmax)/(zmax-zmin)
+        # print(W21_z_integ)
+
+        T0 = (
+            27.0 * 1e3  # muK
+            * self.Ob_0
+            * (self.h ** 2)
+            / 0.023
+            * np.sqrt(0.15 * (1 + z21) / (10 * self.Om_0 * self.h ** 2))
+        )  # uK
+
+        prefac = (1.  # speed of light
+                  * constants.sigma_T.si  # Thomson cross section [m    2]
+                  * (self.nh / units.m**3)  # baryon nb density [m-3]
+                  ) * T0
+
+        # Compute C_tau(ell) integrand, unit 1
+        C_ell_tau21_integrand = (
+            prefac.to(1./units.Mpc)
+            * self.xe(z_integ)
+            / (1. + z_integ) ** 2
+            / cos.comoving_distance(z_integ)**2
+            * [Pbb_z_integ - self.xe(z_integ) * Pee_z_integ] * (units.Mpc)**3
+            * W21_z_integ
+        )[0]
+        # print(C_ell_tau21_integrand[12, iz21])
+        # print(C_ell_tau21_integrand.unit)
+
+        # Compute C_kSZ(ell), no units
+        C_ells = np.array(
+            [trapz(C_ell_tau21_integrand[i], z_integ)
+             for i in range(ells.size)]
+        )
+        self.check_result(C_ells)
+
+        if not Dells:
+            return C_ells
+        else:
+            return ells * (ells + 1.) * C_ells / 2. / np.pi
 
 
     def check_ps(self, ps, include_zero=True):
