@@ -345,3 +345,26 @@ def bin_spectrum(ls, spectrum, bin_edges):
         if m.any():
             binned_hist[ib] = np.mean(spectrum[m])
     return binned_hist
+
+
+def sample_var(ls, dl, telescope, bin_width=100):
+    if np.shape(ls) != np.shape(dl):
+        raise ValueError('ls and dl must have the same shape.')
+    # lrange = np.arange(int(ls.max()))
+    # drange = interp1d(ls, dl, fill_value='extrapolate')
+    dDl = dl * np.sqrt(2./telescope['fsky']/(2.*ls+1.))
+    # sum_l = 
+    # dDl = dl * 1./np.sqrt(telescope['fsky']/2.(2.*ls+1.))
+    return dDl
+
+
+def noise(ls, telescope, pol=False, is_cl=False):
+    ls = np.atleast_1d(ls)
+    sig0 = telescope['noise'] / 60.0 * np.pi / 180.0 # arcmin to rad
+    fwhm = telescope['fwhm'] / 60.0 * np.pi / 180.0 # arcmin to rad
+    nl = sig0**2 / 2. * np.exp(ls*(ls+1.)*fwhm**2/8./np.log(2.))
+    if pol:
+        nl *= 2.
+    if not is_cl:
+        nl *= ls*(ls+1.)/2./np.pi
+    return nl

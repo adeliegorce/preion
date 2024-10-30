@@ -1112,6 +1112,7 @@ class Pee_model:
         ------
             Tuple of (patchy, late-time) B-mode power at ell, in uK2.
         """
+        ells = np.array(ells)
         ell_integ = np.arange(1, 3000)
         # primary EE modes
         Cell_EE_p = self.get_primary_spectra(ells=ell_integ, Dells=False, unit='muK')[:, 2]
