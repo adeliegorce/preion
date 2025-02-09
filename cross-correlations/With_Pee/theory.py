@@ -89,6 +89,8 @@ class Pee_model:
         run_CMB=False,
         cosmomc=False,
         run_camb=False,
+        use_ksz_emulator=False,
+        **emul_kwargs,
     ):
 
         """Container for kSZ power spectrum models.
@@ -178,6 +180,10 @@ class Pee_model:
             run_camb (boolean)
                 If True, runs CAMB to obtain the matter power spectra.
                 Default is False.
+            use_ksz_emulator (boolean)
+                If True, uses the emul_sz package to reconstruct the 
+                kSZ angular power spectrum.
+                Default is False.
 
         """
 
@@ -210,8 +216,6 @@ class Pee_model:
             if thetaMC is not None:
                 if self.thetaMC > 1.0:
                     self.thetaMC /= 100.0
-                else:
-                    self.thetaMC = self.thetaMC
                 pars = camb.CAMBparams()
                 pars.set_cosmology(
                     cosmomc_theta=self.thetaMC, ombh2=self.obh2, omch2=self.och2
@@ -307,6 +311,33 @@ class Pee_model:
         # KSZ shape parameters
         self.alpha0 = alpha0
         self.kappa = kappa
+        # using emulator?
+        self.use_ksz_emulator = bool(use_ksz_emulator)
+        if self.use_ksz_emulator:
+            try:
+                from emul_sz import emulator
+                if isinstance(use_ksz_emulator, str) and use_ksz_emulator in ['NN', 'RF']:
+                    seed = str(use_ksz_emulator)
+                else:
+                    seed = 'NN'
+                self.pksz_emulator = emulator(seed=seed+'_patchy_test', verbose=False)
+                self.hksz_emulator = emulator(seed=seed+'_late', verbose=False)
+                self.emul_dict = {
+                    'ombh2': self.obh2,
+                    'omch2': self.och2,
+                    'ns': self.n_s,
+                    '100theta': self.thetaMC*100.,
+                    'logAs': self.logA,
+                    'zre': self.zre_h,
+                    'dz': self.dz_h,
+                    'alpha0': self.alpha0,
+                    'kappa': self.kappa,
+                }
+            except ModuleNotFoundError:
+                warnings.warn(
+                    'You must install emul_sz to use the emulator.'
+                    'Reverting the full computation.')
+                self.use_ksz_emulator = False
 
         # Initialise arrays for kSZ computation
         self.x_i_z_integ = np.zeros(z_integ.size)  # ionisation level of IGM
@@ -750,121 +781,139 @@ class Pee_model:
             Tuple of (patchy, late-time) KSZ power at ell.
         """
 
-        if signal == "late-time":
-            g = z_integ < self.zend_h
-        elif signal == "both":
-            g = np.ones(self.x_i_z_integ.size, dtype=bool)
-        elif signal == "patchy":
-            g = z_integ >= self.zend_h
+        if self.use_ksz_emulator:
+            pksz = self.pksz_emulator.get_cls(
+                cosmo_dict=self.emul_dict,
+                ells=ells,
+                with_unit=Dells, T_cmb=self.T_cmb,
+            )
+            hksz = self.hksz_emulator.get_cls(
+                cosmo_dict=self.emul_dict,
+                ells=ells,
+                with_unit=Dells, T_cmb=self.T_cmb,
+            )
+            D_ells = np.c_[pksz, hksz]
+            if not Dells:
+                return D_ells / ells * (ells + 1.) / 2. / np.pi
+            else:
+                return D_ells
+
         else:
-            raise ValueError("signal must be both, patchy, or late-time.")
+            if signal == "late-time":
+                g = z_integ < self.zend_h
+            elif signal == "both":
+                g = np.ones(self.x_i_z_integ.size, dtype=bool)
+            elif signal == "patchy":
+                g = z_integ >= self.zend_h
+            else:
+                raise ValueError("signal must be both, patchy, or late-time.")
 
-        ells = np.atleast_1d(ells)
+            ells = np.atleast_1d(ells)
 
-        if np.sum(self.x_i_z_integ) == 0:
-            self.init_reionisation_history()
+            if np.sum(self.x_i_z_integ) == 0:
+                self.init_reionisation_history()
 
-        cos = cosmology.FlatLambdaCDM(
-            H0=self.H0, Tcmb0=self.T_cmb, Ob0=self.Ob_0, Om0=self.Om_0
-        )
-        kmax_ells = np.max(ells) / cos.comoving_distance(z_min).value
-
-        # Define integration ranges
-        k_z_integ = ells[:, None] / self.eta_z_integ  # in [Mpc-1]
-
-        k_min_kp = np.sqrt(
-            k_z_integ[:, g, None, None] ** 2
-            + kp_integ[None, :, None] ** 2.0
-            - 2.0 * k_z_integ[:, g, None, None] * kp_integ[None, :, None] * mu[None, :]
-        )  # in [Mpc-1]
-        if (min(k_z_integ.min(), k_min_kp.min()) < kmin_camb) or (
-            max(k_z_integ.max(), k_min_kp.max()) > kmax_camb
-        ):
-            raise ValueError(
-                "Extrapolating the matter PK too far:"
-                f"kmin = {min(k_z_integ.min(), k_min_kp.min()):.1e}, "
-                f"kmax = {max(k_z_integ.max(), k_min_kp.max()):.1e}."
+            cos = cosmology.FlatLambdaCDM(
+                H0=self.H0, Tcmb0=self.T_cmb, Ob0=self.Ob_0, Om0=self.Om_0
             )
-        if not self.has_camb_run:
-            self.run_camb(kmax_pk=np.min([kmax_pk, k_min_kp.max(), k_z_integ.max(), kp_integ.max()]))
+            kmax_ells = np.max(ells) / cos.comoving_distance(z_min).value
 
-        Pee_min_kp = self.Pee(k_min_kp, z_integ[None, g, None, None])
+            # Define integration ranges
+            k_z_integ = ells[:, None] / self.eta_z_integ  # in [Mpc-1]
 
-        I_e = (Pee_min_kp / kp_integ[None, :, None] ** 2.0) - (
-            np.sqrt(Pee_min_kp / self.Pk(k_min_kp, z_integ[None, g, None, None]))
-            * self.b_del_e_integ[None, g]
-            * self.Pk_lin(k_min_kp, z_integ[None, g, None, None])
-            / k_min_kp**2
-        )
+            k_min_kp = np.sqrt(
+                k_z_integ[:, g, None, None] ** 2
+                + kp_integ[None, :, None] ** 2.0
+                - 2.0 * k_z_integ[:, g, None, None] * kp_integ[None, :, None] * mu[None, :]
+            )  # in [Mpc-1]
+            if (min(k_z_integ.min(), k_min_kp.min()) < kmin_camb) or (
+                max(k_z_integ.max(), k_min_kp.max()) > kmax_camb
+            ):
+                raise ValueError(
+                    "Extrapolating the matter PK too far:"
+                    f"kmin = {min(k_z_integ.min(), k_min_kp.min()):.1e}, "
+                    f"kmax = {max(k_z_integ.max(), k_min_kp.max()):.1e}."
+                )
+            if not self.has_camb_run:
+                self.run_camb(kmax_pk=np.min([kmax_pk, k_min_kp.max(), k_z_integ.max(), kp_integ.max()]))
 
-        # Compute Delta_B^2 integrand, in [s-2.Mpc^2]
-        Delta_B2_integrand = (
-            k_z_integ[:, g, None, None] ** 3.0
-            / 2.0
-            / np.pi**2.0
-            * (
-                self.f_z_integ[None, g, None, None]
-                * self.adot_z_integ[None, g, None, None]
+            Pee_min_kp = self.Pee(k_min_kp, z_integ[None, g, None, None])
+
+            I_e = (Pee_min_kp / kp_integ[None, :, None] ** 2.0) - (
+                np.sqrt(Pee_min_kp / self.Pk(k_min_kp, z_integ[None, g, None, None]))
+                * self.b_del_e_integ[None, g]
+                * self.Pk_lin(k_min_kp, z_integ[None, g, None, None])
+                / k_min_kp**2
             )
-            ** 2.0
-            * kp_integ[None, :, None] ** 3.0
-            * np.log(10.0)
-            * np.sin(th_integ[None, :])
-            / (2.0 * np.pi) ** 2.0
-            * self.Pk_lin_integ[None, g]
-            * (1.0 - mu[None, :] ** 2.0)
-            * I_e
-        )
-        # Compute Delta_B^2, in [s-2.Mpc^2]
-        Delta_B2 = simps(simps(Delta_B2_integrand, th_integ), np.log10(kp_integ))
 
-        # Compute C_kSZ(ell) integrand, unit 1
-        C_ell_kSZ_integrand = (
-            8.0
-            * np.pi**2.0
-            / (2.0 * ells[:, None] + 1.0) ** 3.0
-            * (constants.sigma_T.value / constants.c.value) ** 2.0
-            * (
-                self.n_H_z_integ[None, g]
-                * self.x_i_z_integ[None, g]
-                / (1.0 + z_integ[None, g])
+            # Compute Delta_B^2 integrand, in [s-2.Mpc^2]
+            Delta_B2_integrand = (
+                k_z_integ[:, g, None, None] ** 3.0
+                / 2.0
+                / np.pi**2.0
+                * (
+                    self.f_z_integ[None, g, None, None]
+                    * self.adot_z_integ[None, g, None, None]
+                )
+                ** 2.0
+                * kp_integ[None, :, None] ** 3.0
+                * np.log(10.0)
+                * np.sin(th_integ[None, :])
+                / (2.0 * np.pi) ** 2.0
+                * self.Pk_lin_integ[None, g]
+                * (1.0 - mu[None, :] ** 2.0)
+                * I_e
             )
-            ** 2.0
-            * Delta_B2
-            * np.exp(-2.0 * self.tau_z_integ[None, g])
-            * self.eta_z_integ[None, g]
-            * self.detadz_z_integ[None, g]
-            * Mpcm**3.0
-        )
+            # Compute Delta_B^2, in [s-2.Mpc^2]
+            Delta_B2 = simps(simps(Delta_B2_integrand, th_integ), np.log10(kp_integ))
 
-        # Compute C_kSZ(ell), no units
-        result = np.array(
-            [trapz(C_ell_kSZ_integrand[i], z_integ[g]) for i in range(ells.size)]
-        )
-        self.check_result(result)
-
-        if signal == "both":
-            gp = z_integ >= self.zend_h
-            pksz = np.array(
-                [
-                    trapz(C_ell_kSZ_integrand[i][gp], z_integ[gp])
-                    for i in range(ells.size)
-                ]
+            # Compute C_kSZ(ell) integrand, unit 1
+            C_ell_kSZ_integrand = (
+                8.0
+                * np.pi**2.0
+                / (2.0 * ells[:, None] + 1.0) ** 3.0
+                * (constants.sigma_T.value / constants.c.value) ** 2.0
+                * (
+                    self.n_H_z_integ[None, g]
+                    * self.x_i_z_integ[None, g]
+                    / (1.0 + z_integ[None, g])
+                )
+                ** 2.0
+                * Delta_B2
+                * np.exp(-2.0 * self.tau_z_integ[None, g])
+                * self.eta_z_integ[None, g]
+                * self.detadz_z_integ[None, g]
+                * Mpcm**3.0
             )
-            self.check_result(pksz)
-            hksz = result - pksz
-        elif signal == "patchy":
-            pksz = np.copy(result)
-            hksz = np.zeros(result.shape)
-        else:
-            pksz = np.zeros(result.shape)
-            hksz = np.copy(result)
-        C_ells = np.c_[pksz, hksz]
 
-        if not Dells:
-            return C_ells
-        else:
-            return self.Cl_to_Dl(ells, C_ells)
+            # Compute C_kSZ(ell), no units
+            result = np.array(
+                [trapz(C_ell_kSZ_integrand[i], z_integ[g]) for i in range(ells.size)]
+            )
+            self.check_result(result)
+
+            if signal == "both":
+                gp = z_integ >= self.zend_h
+                pksz = np.array(
+                    [
+                        trapz(C_ell_kSZ_integrand[i][gp], z_integ[gp])
+                        for i in range(ells.size)
+                    ]
+                )
+                self.check_result(pksz)
+                hksz = result - pksz
+            elif signal == "patchy":
+                pksz = np.copy(result)
+                hksz = np.zeros(result.shape)
+            else:
+                pksz = np.zeros(result.shape)
+                hksz = np.copy(result)
+            C_ells = np.c_[pksz, hksz]
+
+            if not Dells:
+                return C_ells
+            else:
+                return self.Cl_to_Dl(ells, C_ells)
 
     def get_p21(self, k, z, mK=True, log=False, pk_units=True):
         P21 = (1.0 - 2.0 * self.xe(z) / self.f) * self.bdH(k, z) * self.Pk(k, z)
@@ -1144,7 +1193,7 @@ class Pee_model:
                 Default is False.
             delta_nu: float
                 Width of the top-hat function representing the
-                frequency resolution of the interferometer.
+                frequency resolution of the interferometer, in MHz.
                 Default is zero (Dirac delta).
         Outputs
         ------
@@ -1156,6 +1205,7 @@ class Pee_model:
 
         ells = np.atleast_1d(ells)
         kmax_ells = np.max(ells) / cos.comoving_distance(z_integ.min()).value
+        delta_nu *= units.MHz
 
         if not self.has_camb_run or kmax_ells > kmax_camb:
             warnings.warn('Re-running CAMB...')
@@ -1172,18 +1222,25 @@ class Pee_model:
         Pbb_z_integ = self.bdH(k_z_integ, z_integ) * self.Pk(k_z_integ, z_integ)
         self.check_ps(Pbb_z_integ)
 
-        W21_z_integ = np.zeros_like(z_integ)
+        W21_z_integ = np.zeros_like(z_integ) * 1. / units.MHz
+        nu21_ref_unit = nu21_ref * units.MHz
+        iz21 = np.argmin(np.abs(z_integ - z21))
         if delta_nu == 0.:
-            iz21 = np.argmin(np.abs(z_integ - z21))
-            W21_z_integ[iz21] = 1.
+            W21_z_integ[iz21] = 1. / units.MHz
         else:
-            nu21 = nu21_ref / (1. + z21) # MHz
+            nu21 = nu21_ref_unit / (1. + z21) # MHz
+            nu_integ = nu21_ref_unit / (1. + z_integ) # MHz
+            if np.abs(np.diff(nu_integ)[iz21]) > delta_nu:
+                raise ValueError('dnu smaller than z_integ resolution.')
             numax = nu21 + delta_nu/2.
             numin = nu21 - delta_nu/2.
-            zmax = (nu21_ref / numin) - 1.
-            zmin = (nu21_ref / numax) - 1.
+            zmax = (nu21_ref_unit / numin) - 1.
+            zmin = (nu21_ref_unit / numax) - 1.
             mask = (z_integ < zmax) & (z_integ >= zmin)
-            W21_z_integ[mask] = (1.+zmin)*(1.+zmax)/(zmax-zmin)
+            W21_z_integ[mask] = 1./(numax-numin)  # unit T
+        W21_z_integ *= nu21_ref_unit * cos.H(z_integ).si / (1+z_integ)**2 / constants.c.si  # units L-1
+        W21_z_integ = W21_z_integ.to(1./units.Mpc)
+        W21_z_integ /= np.trapz(W21_z_integ, cos.comoving_distance(z_integ))
         # print(W21_z_integ)
 
         T0 = (
@@ -1192,31 +1249,36 @@ class Pee_model:
             * (self.h ** 2)
             / 0.023
             * np.sqrt(0.15 * (1 + z21) / (10 * self.Om_0 * self.h ** 2))
-        )  # uK
+        ) * units.uK  # uK
+        # print(T0)
 
-        prefac = (1.  # speed of light
-                  * constants.sigma_T.si  # Thomson cross section [m    2]
+        prefac = (constants.c.si  # speed of light [m.s-1]
+                  * constants.sigma_T.si  # Thomson cross section [m2]
                   * (self.nh / units.m**3)  # baryon nb density [m-3]
                   ) * T0
+        # print(prefac)
 
         # Compute C_tau(ell) integrand, unit 1
         C_ell_tau21_integrand = (
-            prefac.to(1./units.Mpc)
+            prefac.si
             * self.xe(z_integ)
-            / (1. + z_integ) ** 2
+            * (1. + z_integ) ** 2
+            / cos.H(z_integ).si
             / cos.comoving_distance(z_integ)**2
             * [Pbb_z_integ - self.xe(z_integ) * Pee_z_integ] * (units.Mpc)**3
-            * W21_z_integ
+            * W21_z_integ.to(1./units.Mpc)
         )[0]
+        # print(C_ell_tau21_integrand[12, iz21].to(units.uK))
         # print(C_ell_tau21_integrand[12, iz21])
         # print(C_ell_tau21_integrand.unit)
 
         # Compute C_kSZ(ell), no units
         C_ells = np.array(
-            [trapz(C_ell_tau21_integrand[i], z_integ)
+            [trapz(C_ell_tau21_integrand[i].value, z_integ)
              for i in range(ells.size)]
         )
         self.check_result(C_ells)
+        C_ells *= C_ell_tau21_integrand.unit
 
         if not Dells:
             return C_ells
