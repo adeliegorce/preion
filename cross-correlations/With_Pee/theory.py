@@ -90,6 +90,7 @@ class Pee_model:
         cosmomc=False,
         run_camb=False,
         use_ksz_emulator=False,
+        # use_pk_emulator=False,
         **emul_kwargs,
     ):
 
@@ -278,6 +279,28 @@ class Pee_model:
             / constants.m_n.value
         )  # m-3
 
+        # self.use_pk_emulator = bool(use_pk_emulator)
+        # if self.use_pk_emulator:
+        #     try:
+        #         import baccoemu
+        #         self.pk_emulator = baccoemu.Matter_powerspectrum()
+        #         self.pk_emul_dict = {
+        #             'omega_cold'    :  self.Om_0,
+        #             'A_s'           :  self.A_s,
+        #             'omega_baryon'  :  self.Ob_0,
+        #             'ns'            :  self.n_s,
+        #             'hubble'        :  self.h,
+        #             'neutrino_mass' :  0.0,
+        #             'w0'            : -1.0,
+        #             'wa'            :  0.0,
+        #             'expfactor'     :  1
+        #         }
+        #     except ModuleNotFoundError:
+        #         warnings.warn(
+        #             'You must install baccoemu to use the pk emulator.'
+        #             'Reverting the full computation.')
+        #         self.use_pk_emulator = False
+    
         # INITIALISE REIONISATION
 
         # H reionisation
@@ -320,8 +343,8 @@ class Pee_model:
                     seed = str(use_ksz_emulator)
                 else:
                     seed = 'NN'
-                self.pksz_emulator = emulator(seed=seed+'_patchy_test', verbose=False)
-                self.hksz_emulator = emulator(seed=seed+'_late', verbose=False)
+                self.pksz_emulator = emulator(seed=seed+'_KSZ_patchy_test', verbose=False)
+                self.hksz_emulator = emulator(seed=seed+'_KSZ_late', verbose=False)
                 self.emul_dict = {
                     'ombh2': self.obh2,
                     'omch2': self.och2,
@@ -684,6 +707,13 @@ class Pee_model:
         self.n_H_z_integ = self.nh * (1.0 + z_integ) ** 3.0  # baryon nb density [m-3]
 
         # Linear matter power spectrum P(z,k) in Mpc^3
+            # Pk_integ = self.pk_emulator.get_nonlinear_pk(
+            #         k=kp_integ, cold=True, **{**self.pk_emul_dict, 'expfactor': 1./(1.+z_integ[:, None])}
+            # )[:, :, None]
+            # self.Pk_lin_integ = self.pk_emulator.get_linear_pk(
+            #         k=kp_integ, cold=True, **{**self.pk_emul_dict, 'expfactor': 1./(1.+z_integ[:, None])}
+            # )[:, :, None]  # linear matter power spectrum
+        # else:
         assert (
             kmax_pk <= kmax_camb
         ), "k too large for P(k) extrapolation, modify ell_max or z_min"
@@ -998,7 +1028,7 @@ class Pee_model:
 
         # Compute C_kSZ(ell), no units
         result = np.array(
-            [trapz(C_ell_tau_integrand[i], z_integ[g])
+            [trapz(C_ell_tau_integrand[i][g], z_integ[g])
              for i in range(ells.size)]
         )
         self.check_result(result)
