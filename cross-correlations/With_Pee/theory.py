@@ -43,6 +43,7 @@ krange_camb = np.logspace(np.log10(kmin_camb), np.log10(kmax_camb), 500)
 
 # Settings for z integration
 z_recomb = 1100.0
+zmax_tau_reio = 30.
 z_min = 0.10
 z_piv = 1.0
 z_max = 20.0
@@ -59,7 +60,7 @@ z_integ = np.concatenate(
         np.arange(10, z_max + 0.5, step=0.5),
     )
 )
-z3 = np.linspace(0, z_recomb, 10000)
+z3 = np.linspace(0, zmax_tau_reio, 10000)
 
 Mpcm = (1.0 * units.Mpc).to(units.m).value  # one Mpc in [m]
 Mpckm = Mpcm / 1e3
