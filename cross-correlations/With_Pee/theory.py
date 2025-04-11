@@ -393,7 +393,7 @@ class Pee_model:
         """
         z = np.atleast_1d(z)
         if self.asym_h_reion:
-            xe_h = np.ones(np.shape(z))
+            xe_h = np.ones_like(z)
             # H reionisation
             m = z > self.zend_h
             xe_h[m] = np.abs((self.z_early - z[m]) / (self.z_early - self.zend_h)) ** self.alpha
@@ -970,7 +970,7 @@ class Pee_model:
         P21 = np.where(P21<=0, 1.0e-36, P21)
         return np.log10(P21) if log else P21
 
-    def get_tau(self, ells, signal="patchy", Dells=True):
+    def get_tau(self, ells, signal="patchy", Dells=True, zlin=np.arange(0.01, 30., step=0.1)):
         """
         Compute tau angular power spectrum for given model at ell.
 
@@ -992,11 +992,11 @@ class Pee_model:
         """
 
         if signal == "late-time":
-            g = z_integ < self.zend_h
+            g = zlin < self.zend_h
         elif signal == "both":
-            g = np.ones(z_integ.size, dtype=bool)
+            g = np.ones(zlin.size, dtype=bool)
         elif signal == "patchy":
-            g = z_integ >= self.zend_h
+            g = zlin >= self.zend_h
         else:
             raise ValueError("signal must be both, patchy, or late-time.")
 
@@ -1005,18 +1005,18 @@ class Pee_model:
         )
 
         ells = np.atleast_1d(ells)
-        kmax_ells = np.max(ells) / cos.comoving_distance(z_integ.min()).value
+        kmax_ells = np.max(ells) / cos.comoving_distance(zlin.min()).value
 
         if not self.has_camb_run:
             warnings.warn('Re-running CAMB...')
             self.run_camb(kmax_pk=min(kmax_ells, kmax_camb))
 
         # Define integration ranges
-        k_z_integ = ells[:, None] / cos.comoving_distance(z_integ).value  # [Mpc-1]
+        k_z_integ = ells[:, None] / cos.comoving_distance(zlin).value  # [Mpc-1]
         if (k_z_integ.min() < kmin_camb) or (k_z_integ.max() > kmax_camb):
             raise ValueError("Extrapolating the matter PK too far.")
 
-        Pee_z_integ = self.Pee(k_z_integ, z_integ)
+        Pee_z_integ = self.Pee(k_z_integ, zlin)
         self.check_ps(Pee_z_integ)
 
         prefac = (constants.c.si  # speed of light
@@ -1026,25 +1026,25 @@ class Pee_model:
 
         # Compute C_tau(ell) integrand, unit 1
         C_ell_tau_integrand = (
-            self.xe(z_integ)**2
-            / cos.H(z_integ).si
-            * (1. + z_integ)**4
-            / cos.comoving_distance(z_integ).si**2
+            self.xe(zlin)**2
+            / cos.H(zlin).si
+            * (1. + zlin)**4
+            / cos.comoving_distance(zlin).si**2
             * Pee_z_integ * (units.Mpc).si**3
         ) * prefac
 
         # Compute C_kSZ(ell), no units
         result = np.array(
-            [trapz(C_ell_tau_integrand[i][g], z_integ[g])
+            [trapz(C_ell_tau_integrand[i][g], zlin[g])
              for i in range(ells.size)]
         )
         self.check_result(result)
 
         if signal == "both":
-            gp = z_integ >= self.zend_h
+            gp = zlin >= self.zend_h
             ptau = np.array(
                 [
-                    trapz(C_ell_tau_integrand[i][gp], z_integ[gp])
+                    trapz(C_ell_tau_integrand[i][gp], zlin[gp])
                     for i in range(ells.size)
                 ]
             )
