@@ -344,7 +344,7 @@ class Pee_model:
                     seed = str(use_ksz_emulator)
                 else:
                     seed = 'NN'
-                self.pksz_emulator = emulator(seed=seed+'_KSZ_patchy_test', verbose=False)
+                self.pksz_emulator = emulator(seed=seed+'_KSZ_patchy', verbose=False)
                 self.hksz_emulator = emulator(seed=seed+'_KSZ_late', verbose=False)
                 self.emul_dict = {
                     'ombh2': self.obh2,
