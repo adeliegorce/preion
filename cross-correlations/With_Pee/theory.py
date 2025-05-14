@@ -43,6 +43,7 @@ krange_camb = np.logspace(np.log10(kmin_camb), np.log10(kmax_camb), 500)
 
 # Settings for z integration
 z_recomb = 1100.0
+zmax_tau_reio = 30.
 z_min = 0.10
 z_piv = 1.0
 z_max = 20.0
@@ -59,7 +60,7 @@ z_integ = np.concatenate(
         np.arange(10, z_max + 0.5, step=0.5),
     )
 )
-z3 = np.linspace(0, z_recomb, 10000)
+z3 = np.linspace(0, zmax_tau_reio, 10000)
 
 Mpcm = (1.0 * units.Mpc).to(units.m).value  # one Mpc in [m]
 Mpckm = Mpcm / 1e3
@@ -90,6 +91,7 @@ class Pee_model:
         cosmomc=False,
         run_camb=False,
         use_ksz_emulator=False,
+        # use_pk_emulator=False,
         **emul_kwargs,
     ):
 
@@ -278,6 +280,28 @@ class Pee_model:
             / constants.m_n.value
         )  # m-3
 
+        # self.use_pk_emulator = bool(use_pk_emulator)
+        # if self.use_pk_emulator:
+        #     try:
+        #         import baccoemu
+        #         self.pk_emulator = baccoemu.Matter_powerspectrum()
+        #         self.pk_emul_dict = {
+        #             'omega_cold'    :  self.Om_0,
+        #             'A_s'           :  self.A_s,
+        #             'omega_baryon'  :  self.Ob_0,
+        #             'ns'            :  self.n_s,
+        #             'hubble'        :  self.h,
+        #             'neutrino_mass' :  0.0,
+        #             'w0'            : -1.0,
+        #             'wa'            :  0.0,
+        #             'expfactor'     :  1
+        #         }
+        #     except ModuleNotFoundError:
+        #         warnings.warn(
+        #             'You must install baccoemu to use the pk emulator.'
+        #             'Reverting the full computation.')
+        #         self.use_pk_emulator = False
+    
         # INITIALISE REIONISATION
 
         # H reionisation
@@ -320,8 +344,8 @@ class Pee_model:
                     seed = str(use_ksz_emulator)
                 else:
                     seed = 'NN'
-                self.pksz_emulator = emulator(seed=seed+'_patchy_test', verbose=False)
-                self.hksz_emulator = emulator(seed=seed+'_late', verbose=False)
+                self.pksz_emulator = emulator(seed=seed+'_KSZ_patchy', verbose=False)
+                self.hksz_emulator = emulator(seed=seed+'_KSZ_late', verbose=False)
                 self.emul_dict = {
                     'ombh2': self.obh2,
                     'omch2': self.och2,
@@ -369,7 +393,7 @@ class Pee_model:
         """
         z = np.atleast_1d(z)
         if self.asym_h_reion:
-            xe_h = np.ones(np.shape(z))
+            xe_h = np.ones_like(z)
             # H reionisation
             m = z > self.zend_h
             xe_h[m] = np.abs((self.z_early - z[m]) / (self.z_early - self.zend_h)) ** self.alpha
@@ -528,6 +552,14 @@ class Pee_model:
                 (self.z_early - self.zre_h) / (self.z_early - self.zend_h)
             )
 
+        if self.use_ksz_emulator:
+            self.emul_dict.update({
+                'zre': self.zre_h,
+                'dz': self.dz_h,
+                'alpha0': self.alpha0,
+                'kappa': self.kappa,
+            })
+
         self.tau = self.xe2tau(z3)[0]
         tauf = interp1d(z3, self.xe2tau(z3))  # interpolation
         self.x_i_z_integ = self.xe(z_integ)  # reionisation history
@@ -554,6 +586,7 @@ class Pee_model:
         else:
             pars.delta_redshift = self.dz_h
         pars.Reion.redshift = self.zre_h
+        # pars.Reion.optical_depth = self.tau
         pars.set_dark_energy()
 
         return pars
@@ -684,6 +717,13 @@ class Pee_model:
         self.n_H_z_integ = self.nh * (1.0 + z_integ) ** 3.0  # baryon nb density [m-3]
 
         # Linear matter power spectrum P(z,k) in Mpc^3
+            # Pk_integ = self.pk_emulator.get_nonlinear_pk(
+            #         k=kp_integ, cold=True, **{**self.pk_emul_dict, 'expfactor': 1./(1.+z_integ[:, None])}
+            # )[:, :, None]
+            # self.Pk_lin_integ = self.pk_emulator.get_linear_pk(
+            #         k=kp_integ, cold=True, **{**self.pk_emul_dict, 'expfactor': 1./(1.+z_integ[:, None])}
+            # )[:, :, None]  # linear matter power spectrum
+        # else:
         assert (
             kmax_pk <= kmax_camb
         ), "k too large for P(k) extrapolation, modify ell_max or z_min"
@@ -744,9 +784,6 @@ class Pee_model:
         Cells = np.atleast_1d(Cells)
         # consistency checks
         assert np.size(ells) == np.shape(Cells)[0], "Inputs have different dimensions."
-        # convert ells to array if float is given
-        ells = np.array(ells)
-        Cells = np.array(Cells)
 
         D_ells = (
             ells[:, None]
@@ -933,7 +970,7 @@ class Pee_model:
         P21 = np.where(P21<=0, 1.0e-36, P21)
         return np.log10(P21) if log else P21
 
-    def get_tau(self, ells, signal="patchy", Dells=True):
+    def get_tau(self, ells, signal="patchy", Dells=True, zlin=np.arange(0.01, 30., step=0.1)):
         """
         Compute tau angular power spectrum for given model at ell.
 
@@ -955,11 +992,11 @@ class Pee_model:
         """
 
         if signal == "late-time":
-            g = z_integ < self.zend_h
+            g = zlin < self.zend_h
         elif signal == "both":
-            g = np.ones(z_integ.size, dtype=bool)
+            g = np.ones(zlin.size, dtype=bool)
         elif signal == "patchy":
-            g = z_integ >= self.zend_h
+            g = zlin >= self.zend_h
         else:
             raise ValueError("signal must be both, patchy, or late-time.")
 
@@ -968,18 +1005,18 @@ class Pee_model:
         )
 
         ells = np.atleast_1d(ells)
-        kmax_ells = np.max(ells) / cos.comoving_distance(z_integ.min()).value
+        kmax_ells = np.max(ells) / cos.comoving_distance(zlin.min()).value
 
-        if not self.has_camb_run or kmax_ells > kmax_camb:
+        if not self.has_camb_run:
             warnings.warn('Re-running CAMB...')
-            self.run_camb(kmax=kmax_ells)
+            self.run_camb(kmax_pk=min(kmax_ells, kmax_camb))
 
         # Define integration ranges
-        k_z_integ = ells[:, None] / cos.comoving_distance(z_integ).value  # [Mpc-1]
+        k_z_integ = ells[:, None] / cos.comoving_distance(zlin).value  # [Mpc-1]
         if (k_z_integ.min() < kmin_camb) or (k_z_integ.max() > kmax_camb):
             raise ValueError("Extrapolating the matter PK too far.")
 
-        Pee_z_integ = self.Pee(k_z_integ, z_integ)
+        Pee_z_integ = self.Pee(k_z_integ, zlin)
         self.check_ps(Pee_z_integ)
 
         prefac = (constants.c.si  # speed of light
@@ -989,25 +1026,25 @@ class Pee_model:
 
         # Compute C_tau(ell) integrand, unit 1
         C_ell_tau_integrand = (
-            self.xe(z_integ)**2
-            / cos.H(z_integ).si
-            * (1. + z_integ)**4
-            / cos.comoving_distance(z_integ).si**2
+            self.xe(zlin)**2
+            / cos.H(zlin).si
+            * (1. + zlin)**4
+            / cos.comoving_distance(zlin).si**2
             * Pee_z_integ * (units.Mpc).si**3
         ) * prefac
 
         # Compute C_kSZ(ell), no units
         result = np.array(
-            [trapz(C_ell_tau_integrand[i], z_integ[g])
+            [trapz(C_ell_tau_integrand[i][g], zlin[g])
              for i in range(ells.size)]
         )
         self.check_result(result)
 
         if signal == "both":
-            gp = z_integ >= self.zend_h
+            gp = zlin >= self.zend_h
             ptau = np.array(
                 [
-                    trapz(C_ell_tau_integrand[i][gp], z_integ[gp])
+                    trapz(C_ell_tau_integrand[i][gp], zlin[gp])
                     for i in range(ells.size)
                 ]
             )
@@ -1087,14 +1124,18 @@ class Pee_model:
         ells = np.atleast_1d(ells)
         kmax_ells = np.max(ells) / cos.comoving_distance(z_integ.min()).value
 
-        if not self.has_camb_run or kmax_ells > kmax_camb:
+        if not self.has_camb_run:
             warnings.warn('Re-running CAMB...')
-            self.run_camb(kmax=kmax_ells)
+            self.run_camb(kmax_pk=min(kmax_ells, kmax_camb))
 
         # Define integration ranges
         k_z_integ = ells[:, None] / cos.comoving_distance(z_integ).value  # [Mpc-1]
         if (k_z_integ.min() < kmin_camb) or (k_z_integ.max() > kmax_camb):
-            raise ValueError("Extrapolating the matter PK too far.")
+            raise ValueError(
+                "Extrapolating the matter PK too far:"
+                f"kmin = {k_z_integ.min():.1e}, "
+                f"kmax = {k_z_integ.max():.1e}."
+            )
 
         Pee_z_integ = self.Pee(k_z_integ, z_integ)
         self.check_ps(Pee_z_integ)
@@ -1148,6 +1189,7 @@ class Pee_model:
     def get_screening_B_modes(self, ells, Dells=True):
         """
         Compute angular power spectrum of scattering B-modes for given model at ell.
+        Valid at l <~ 300 only.
 
         Parameters
         ----------
@@ -1161,21 +1203,30 @@ class Pee_model:
         ------
             Tuple of (patchy, late-time) B-mode power at ell, in uK2.
         """
+
         ells = np.array(ells)
-        ell_integ = np.arange(1, 3000)
+        CBB_screen_temp = np.zeros(ells.size)
+
         # primary EE modes
-        Cell_EE_p = self.get_primary_spectra(ells=ell_integ, Dells=False, unit='muK')[:, 2]
+        Cell_EE_p = self.get_primary_spectra(ells=ells, Dells=False, unit='muK')[:, 2]
         # tau tau ps (patchy+late-time)
-        Cell_tt = np.sum(self.get_tau(ells=ell_integ, signal='both', Dells=False), axis=1)
-        # cl bb
-        prefac = 1. / 8. / np.pi**2 * np.exp(-2. * self.xe2tau(z=np.linspace(0, 20, 300))[0])
-        CBB_screen = np.trapz(Cell_EE_p*Cell_tt, ell_integ) * prefac
-        CBB_screen *= np.ones(ells.size)
+        Cell_tt = np.sum(self.get_tau(ells=ells, signal='both', Dells=False), axis=1)
+
+        # ells < 300
+        m = ells < 300
+        CBB_screen_lowl = np.sum(Cell_EE_p*Cell_tt*(2.*ells+1.)/4./np.pi)
+        CBB_screen_temp[m] = CBB_screen_lowl * np.ones(np.sum(m)) * 0.5 * np.exp(-2. * self.tau)
+        # ells > 2000
+        m2 = ells > 2000
+        Erms2 = np.sum(self.get_primary_spectra(ells=np.arange(5000), Dells=False, unit='muK')[:, 2]*(2.*np.arange(5000)+1.)/4./np.pi)
+        CBB_screen_temp[m2] = 0.5 * Erms2 * Cell_tt[m2] * np.exp(-2.*self.tau)
+        # 300 <= ell <= 2000
+        CBB_screen = interp1d(ells[m | m2], CBB_screen_temp[m | m2], fill_value='extrapolate', bounds_error=False)(ells)
 
         if not Dells:
             return CBB_screen
         else:
-            return self.Cl_to_Dl(ells, CBB_screen)[:, 0] / (self.T_cmb * 1e6) ** 2
+            return CBB_screen * ells * (ells + 1.) / 2. / np.pi
 
     def get_tau_21_cross(self, z21, ells, Dells=True, delta_nu=0.):
         """
@@ -1207,9 +1258,9 @@ class Pee_model:
         kmax_ells = np.max(ells) / cos.comoving_distance(z_integ.min()).value
         delta_nu *= units.MHz
 
-        if not self.has_camb_run or kmax_ells > kmax_camb:
+        if not self.has_camb_run:
             warnings.warn('Re-running CAMB...')
-            self.run_camb(kmax=kmax_ells)
+            self.run_camb(kmax_pk=min(kmax_ells, kmax_camb))
 
         # Define integration ranges
         k_z_integ = ells[:, None] / cos.comoving_distance(z_integ).value  # [Mpc-1]

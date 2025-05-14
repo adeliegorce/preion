@@ -30,26 +30,27 @@ telescope_specs = {
                'color': (0.4, 0.7607843137254902, 0.6470588235294118, 1.0)},
     'AdvACT': {'fsky':0.25, 'fwhm':1.5, 'noise':13.2, 'lmin': 600, 'lmax':8000,
                'color': (0.4, 0.7607843137254902, 0.6470588235294118, 1.0), 'ref':'DR6'},
-    # 'SO': {'fsky':0.4, 'fwhm':2.0, 'noise':3.0, 'color': (0.9882352941176471, 0.5529411764705883, 0.3843137254901961, 1.0)},
+    'SO': {'color': (0.9882352941176471, 0.5529411764705883, 0.3843137254901961, 1.0)},
     # lmax=8000 optimistic, in forecast paper they take lmax=3000
     'SO-LAT': {'fsky':0.4, 'fwhm':1.5, 'noise':6.0, 'lmin': 1000., 'lmax': 8000., 'ref':'https://arxiv.org/pdf/2103.02747',
                'color': (0.9882352941176471, 0.5529411764705883, 0.3843137254901961, 1.0)},  # https://arxiv.org/pdf/2103.02747
     'SO-SAT': {'fsky':0.1, 'fwhm':10.0, 'noise':2.5, 'lmax': 1000., 'lmin':10., 'ref':'https://arxiv.org/pdf/2103.02747',
-               'color': (0.8980392156862745, 0.7686274509803922, 0.5803921568627451, 1.0)},  # https://arxiv.org/pdf/2103.02747
-    'CMB-S4-LAT': {'fsky':0.6, 'fwhm':2.0, 'noise': 1.4142, 'lmin': 1000., 'lmax': 8000., 'ref':'https://arxiv.org/pdf/1907.04473',
+               'color': (0.9882352941176471, 0.5529411764705883, 0.3843137254901961, 1.0)},  # https://arxiv.org/pdf/2103.02747
+    'CMB-S4': {'color': (0.5529411764705883, 0.6274509803921569, 0.796078431372549, 1.0)},
+    'CMB-S4-LAT': {'fsky':0.4, 'fwhm':1.0, 'noise': 1.4142, 'lmin': 30., 'lmax': 4000., 'ref':'https://arxiv.org/pdf/1907.04473',
                    'color': (0.5529411764705883, 0.6274509803921569, 0.796078431372549, 1.0)},
     'CMB-S4-SAT': {'fsky':0.03, 'fwhm':23., 'noise': 1., 'lmin': 5., 'lmax': 100., 'name':'ultra-deep survey', 'ref':'https://arxiv.org/pdf/1907.04473',
                    'color': (0.5529411764705883, 0.6274509803921569, 0.796078431372549, 1.0)},
     'CMB-HD': {'fsky':0.5, 'fwhm':0.25, 'noise':.7, 'lmax':25000., 'lmin':1000., 'ref':'https://arxiv.org/pdf/1906.10134',
                'color': (0.9058823529411765, 0.5411764705882353, 0.7647058823529411, 1.0)},
-    'LiteBIRD': {'fsky':.5, 'fwhm':30., 'noise':1.2, 'ref':'https://air.unimi.it/retrieve/dfa8b9a3-7df8-748b-e053-3a05fe0a3a96/BAAS_LiteBIRD_61598545769470.pdf',
+    'LiteBIRD': {'fsky':.7, 'fwhm':30., 'noise':1.2, 'ref':'https://air.unimi.it/retrieve/dfa8b9a3-7df8-748b-e053-3a05fe0a3a96/BAAS_LiteBIRD_61598545769470.pdf',
                  'lmin':1., 'lmax':200.,
                  'color': (0.6509803921568628, 0.8470588235294118, 0.32941176470588235, 1.0)},
     'Planck': {'fsky': 0.5, 'fwhm': 8.0, 'noise': 36.0, 'lmin':30., 'lmax':2000, 'color':'k', 'ref':'PR4'},
     'PICO': {'fsky':.5, 'fwhm':7.9, 'noise':1.1, 'lmin':1., 'lmax': 4000.,
              'ref': 'https://arxiv.org/abs/1902.10541',
              'color': (1.0, 0.8509803921568627, 0.1843137254901961, 1.0)},
-    'ideal': {'fsky':1., 'fwhm':.5, 'noise':.01, 'color': 'grey'}
+    # 'ideal': {'fsky':1., 'fwhm':.5, 'noise':.01, 'color': 'grey'}
 }
 
 # ANALYSIS PARAMETERS
