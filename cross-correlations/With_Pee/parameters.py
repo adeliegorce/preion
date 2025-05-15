@@ -26,10 +26,10 @@ helium_fullreion_deltaredshift = 0.5
 
 # TELESCOPE SPECS
 telescope_specs = {
-    'SPT-3G': {'fsky':0.036, 'fwhm':1.3, 'noise':14.0, 'lmin': 2000, 'lmax':10400,
+    'SPT-3G': {'fsky':0.05, 'fwhm':1.3, 'noise':14.0, 'lmin': 2000, 'lmax':10400,
                'color': (0.4, 0.7607843137254902, 0.6470588235294118, 1.0)},
-    'AdvACT': {'fsky':0.5, 'fwhm':1.5, 'noise':13.2, 'lmin': 2000, 'lmax':8000,
-               'color': (0.4, 0.7607843137254902, 0.6470588235294118, 1.0)},
+    'AdvACT': {'fsky':0.25, 'fwhm':1.5, 'noise':13.2, 'lmin': 600, 'lmax':8000,
+               'color': (0.4, 0.7607843137254902, 0.6470588235294118, 1.0), 'ref':'DR6'},
     'SO': {'color': (0.9882352941176471, 0.5529411764705883, 0.3843137254901961, 1.0)},
     # lmax=8000 optimistic, in forecast paper they take lmax=3000
     'SO-LAT': {'fsky':0.4, 'fwhm':1.5, 'noise':6.0, 'lmin': 1000., 'lmax': 8000., 'ref':'https://arxiv.org/pdf/2103.02747',
@@ -46,8 +46,8 @@ telescope_specs = {
     'LiteBIRD': {'fsky':.7, 'fwhm':30., 'noise':1.2, 'ref':'https://air.unimi.it/retrieve/dfa8b9a3-7df8-748b-e053-3a05fe0a3a96/BAAS_LiteBIRD_61598545769470.pdf',
                  'lmin':1., 'lmax':200.,
                  'color': (0.6509803921568628, 0.8470588235294118, 0.32941176470588235, 1.0)},
-    'Planck': {'fsky': 0.7, 'fwhm': 8.0, 'noise': 36.0, 'lmin':1., 'lmax':1000., 'color':'k', 'ref':'Planck 2018 results I, Table 4'},
-    'PICO': {'fsky':.7, 'fwhm':7.9, 'noise':1.1, 'lmin':1., 'lmax': 4000.,
+    'Planck': {'fsky': 0.5, 'fwhm': 8.0, 'noise': 36.0, 'lmin':30., 'lmax':2000, 'color':'k', 'ref':'PR4'},
+    'PICO': {'fsky':.5, 'fwhm':7.9, 'noise':1.1, 'lmin':1., 'lmax': 4000.,
              'ref': 'https://arxiv.org/abs/1902.10541',
              'color': (1.0, 0.8509803921568627, 0.1843137254901961, 1.0)},
     # 'ideal': {'fsky':1., 'fwhm':.5, 'noise':.01, 'color': 'grey'}
