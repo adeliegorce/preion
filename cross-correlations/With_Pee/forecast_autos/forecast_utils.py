@@ -130,16 +130,17 @@ def make_datapoints(
 
     assert len(ells) == 3
     assert np.size(theta) >= 4
-    for i, tel in enumerate(telescopes):
-        assert tel in telescope_specs.keys()
-        if (np.min(ells[i]) < telescope_specs[tel]['lmin']):
-            warnings.warn(f'Min l below {tel} limit.')
-        if (np.max(ells[i]) > telescope_specs[tel]['lmax']):
-            warnings.warn(f'Max l above {tel} limit.')
-        ells[i] = np.array(ells[i])
-        ells[i] = ells[i][np.logical_and(ells[i] >= telescope_specs[tel]['lmin'], ells[i] <= telescope_specs[tel]['lmax'])]
+    if telescopes is not None:
+        tel_tau, tel_ksz, tel_bb = telescopes
+        for i, tel in enumerate(telescopes):
+            assert tel in telescope_specs.keys()
+            if (np.min(ells[i]) < telescope_specs[tel]['lmin']):
+                warnings.warn(f'Min l below {tel} limit.')
+            if (np.max(ells[i]) > telescope_specs[tel]['lmax']):
+                warnings.warn(f'Max l above {tel} limit.')
+            ells[i] = np.array(ells[i])
+            ells[i] = ells[i][np.logical_and(ells[i] >= telescope_specs[tel]['lmin'], ells[i] <= telescope_specs[tel]['lmax'])]
     ells_tau, ells_ksz, ells_bb = ells
-    tel_tau, tel_ksz, tel_bb = telescopes
 
     preion_model = Pee_model(
         zre_h=theta[0], dz_h=theta[1],
@@ -151,39 +152,44 @@ def make_datapoints(
     tau_ps = np.sum(preion_model.get_tau(ells=ells_tau, signal='both', Dells=True), axis=1)
     total_bb = preion_model.get_B_modes(ells=ells_bb, Dells=True)
 
-    ls_temp = np.arange(int(telescope_specs[tel_tau]['lmax'])+1)
-    CMB_Cells = preion_model.get_primary_spectra(ells=ls_temp, Dells=False)
-    CMB_Cells = CMB_Cells[:, [0, 1, 2, 4, 3]]
-    tau_temp = np.r_[0., np.sum(preion_model.get_tau(ells=ls_temp[1:], signal='both', Dells=False), axis=1)]
-    tau_noise_res = tau_noise(tel_tau, np.c_[CMB_Cells, tau_temp], is_cl=False)
+    if telescopes is not None:
+        ls_temp = np.arange(int(telescope_specs[tel_tau]['lmax'])+1)
+        CMB_Cells = preion_model.get_primary_spectra(ells=ls_temp, Dells=False)
+        CMB_Cells = CMB_Cells[:, [0, 1, 2, 4, 3]]
+        tau_temp = np.r_[0., np.sum(preion_model.get_tau(ells=ls_temp[1:], signal='both', Dells=False), axis=1)]
+        tau_noise_res = tau_noise(tel_tau, np.c_[CMB_Cells, tau_temp], is_cl=False)
 
-    cov_tau = np.diag(
-        sample_var(ells_tau, tau_ps+interp1d(ls_temp, tau_noise_res)(ells_tau), telescope_specs[tel_tau])**2
-        / np.diff(ells_tau).mean()
-    )
-    cov_ksz = np.diag(
-        sample_var(ells_ksz, ksz_ps+noise(ells_ksz, telescope_specs[tel_ksz], pol=False), telescope_specs[tel_ksz])**2
-        / np.diff(ells_ksz).mean()
-    )
-    cov_bb = np.diag(
-        sample_var(ells_bb, total_bb+noise(ells_bb, telescope_specs[tel_bb], pol=True), telescope_specs[tel_bb])**2
-        / np.diff(ells_bb).mean()
-    )
+        cov_tau = np.diag(
+            sample_var(ells_tau, tau_ps+interp1d(ls_temp, tau_noise_res)(ells_tau), telescope_specs[tel_tau])**2
+            / np.diff(ells_tau).mean()
+        )
+        cov_ksz = np.diag(
+            sample_var(ells_ksz, ksz_ps+noise(ells_ksz, telescope_specs[tel_ksz], pol=False), telescope_specs[tel_ksz])**2
+            / np.diff(ells_ksz).mean()
+        )
+        cov_bb = np.diag(
+            sample_var(ells_bb, total_bb+noise(ells_bb, telescope_specs[tel_bb], pol=True), telescope_specs[tel_bb])**2
+            / np.diff(ells_bb).mean()
+        )
+    else:
+        cov_tau = np.diag(np.ones_like(tau_ps))
+        cov_ksz = np.diag(np.ones_like(ksz_ps))
+        cov_bb = np.diag(np.ones_like(total_bb))
 
     if randomness:
         ksz_ps = np.random.normal(ksz_ps, np.sqrt(np.diag(cov_ksz)))
         total_bb = np.random.normal(total_bb, np.sqrt(np.diag(cov_bb)))
         tau_ps = np.random.normal(tau_ps, np.sqrt(np.diag(cov_tau)))
 
-    if save is not None:
+    if (save is not None) and (not os.path.exists(f'data/{str(save)}_bb_datapoints.txt')):
         np.savetxt(f'data/{str(save)}_bb_datapoints.txt', np.c_[ells_bb, total_bb], header='ell, BB total [uK2]')
         np.savetxt(f'data/{str(save)}_ksz_datapoints.txt', np.c_[ells_ksz, ksz_ps], header='ell, ksz [uK2], tautau')
         np.savetxt(f'data/{str(save)}_bb_datapoints.txt', np.c_[ells_tau, tau_ps], header='ell, ksz [uK2], tautau')
         np.savetxt(f'data/{str(save)}_cov_ksz.txt', cov_ksz)
         np.savetxt(f'data/{str(save)}_cov_tau.txt', cov_tau)
         np.savetxt(f'data/{str(save)}_cov_bb.txt', cov_bb)
-    else:
-        return tau_ps, ksz_ps, total_bb, cov_tau, cov_ksz, cov_bb
+    
+    return tau_ps, ksz_ps, total_bb, cov_tau, cov_ksz, cov_bb
 
 
 def get_derivatives(theta_true, ells, low_ells=None, run_derivatives=False, dev=0.05, use_ksz_emulator=False, verbose=False):
