@@ -38,7 +38,7 @@ tau_data, ksz_data, bb_data, cov_tau, cov_ksz, cov_bb = make_datapoints(
     theta_true,
     ells=ells,
     telescopes=telescopes, randomness=randomness,
-    cos=cos, save=None, use_ksz_emulator=use_ksz_emulator,
+    cos=cos, save=label, use_ksz_emulator=use_ksz_emulator,
 )
 
 preion_model = Pee_model(
