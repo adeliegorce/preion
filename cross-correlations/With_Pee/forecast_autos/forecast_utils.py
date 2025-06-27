@@ -182,9 +182,9 @@ def make_datapoints(
         tau_ps = np.random.normal(tau_ps, np.sqrt(np.diag(cov_tau)))
 
     if (save is not None) and (not os.path.exists(f'data/{str(save)}_bb_datapoints.txt')):
-        np.savetxt(f'data/{str(save)}_bb_datapoints.txt', np.c_[ells_bb, total_bb], header='ell, BB total [uK2]')
-        np.savetxt(f'data/{str(save)}_ksz_datapoints.txt', np.c_[ells_ksz, ksz_ps], header='ell, ksz [uK2], tautau')
-        np.savetxt(f'data/{str(save)}_bb_datapoints.txt', np.c_[ells_tau, tau_ps], header='ell, ksz [uK2], tautau')
+        np.savetxt(f'data/{str(save)}_bb_datapoints.txt', np.c_[ells_bb, total_bb], header='ell, Dl BB total [uK2]')
+        np.savetxt(f'data/{str(save)}_ksz_datapoints.txt', np.c_[ells_ksz, ksz_ps], header='ell, Dl kSZ [uK2]')
+        np.savetxt(f'data/{str(save)}_tau_datapoints.txt', np.c_[ells_tau, tau_ps], header='ell, Dl tautau')
         np.savetxt(f'data/{str(save)}_cov_ksz.txt', cov_ksz)
         np.savetxt(f'data/{str(save)}_cov_tau.txt', cov_tau)
         np.savetxt(f'data/{str(save)}_cov_bb.txt', cov_bb)
