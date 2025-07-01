@@ -11,7 +11,7 @@ from astropy import constants, cosmology, units
 from camb import model
 
 # import multiprocessing
-from scipy.integrate import cumtrapz, simps, trapz
+from scipy.integrate import cumulative_trapezoid as cumtrapz, simpson as simps, trapezoid as trapz
 from scipy.interpolate import interp1d
 
 from parameters import *
@@ -527,9 +527,8 @@ class Pee_model:
             )
             self.run_camb(kmax_pk=kmax_pk)
 
-        Pee = (self.f - self.xe(z)) / self.f * self.W(k, self.xe(z)) + self.xe(
-            z
-        ) / self.f * self.bdH(k, z) * self.Pk(k, z)
+        Pee = (self.f - self.xe(z)) / self.f * self.W(k, self.xe(z))
+        Pee += self.xe(z) / self.f * self.bdH(k, z) * self.Pk(k, z)
 
         return Pee
 
@@ -659,7 +658,6 @@ class Pee_model:
                 interp1d(ls, CL[:, 2])(ells)
             ]
 
-    # @profile
     def run_camb(self, force=False, kmax_pk=kmax_camb, CMB_ells=[10000]):
         """
         Compute matter power spectra and fill related arrays.
@@ -796,7 +794,6 @@ class Pee_model:
 
         return D_ells
 
-    # @profile
     def get_ksz(self, ells, signal="patchy", Dells=True):
         """
         Compute kSZ angular power spectrum for given model at ell.
@@ -954,9 +951,9 @@ class Pee_model:
 
     def get_p21(self, k, z, mK=True, log=False, pk_units=True):
         P21 = (1.0 - 2.0 * self.xe(z) / self.f) * self.bdH(k, z) * self.Pk(k, z)
+        P21 += (self.xe(z) / self.f) ** 2 * self.Pee(k, z)
         if not pk_units:
             P21 *= k ** 3 / 2.0 / np.pi**2
-        P21 += (self.xe(z) / self.f) ** 2 * self.Pee(k, z) 
         if mK:
             T0 = (
                 27.0
