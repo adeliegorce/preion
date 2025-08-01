@@ -35,6 +35,10 @@ telescope_specs = {
     'SO-LAT': {'fsky':0.4, 'fwhm':1.5, 'noise':6.0, 'lmin': 1000., 'lmax': 8000., 'ref':'https://arxiv.org/pdf/2103.02747',
                'color': (0.9882352941176471, 0.5529411764705883, 0.3843137254901961, 1.0)},  # https://arxiv.org/pdf/2103.02747
     'SO-SAT': {'fsky':0.1, 'fwhm':10.0, 'noise':2.5, 'lmax': 1000., 'lmin':10., 'ref':'https://arxiv.org/pdf/2103.02747',
+               'color': (0.9882352941176471, 0.5529411764705883, 0.3843137254901961, 1.0)},  # https://arxiv.org/pdf/2412.01200
+    'SO-LAT_opt': {'fsky':0.4, 'fwhm':1.5, 'noise':.6, 'lmin': 1000., 'lmax': 8000., 'ref':'https://arxiv.org/pdf/2103.02747',
+               'color': (0.9882352941176471, 0.5529411764705883, 0.3843137254901961, 1.0)},  # https://arxiv.org/pdf/2103.02747
+    'SO-SAT_opt': {'fsky':0.1, 'fwhm':10.0, 'noise':0.25, 'lmax': 1000., 'lmin':10., 'ref':'https://arxiv.org/pdf/2103.02747',
                'color': (0.9882352941176471, 0.5529411764705883, 0.3843137254901961, 1.0)},  # https://arxiv.org/pdf/2103.02747
     'CMB-S4': {'color': (0.5529411764705883, 0.6274509803921569, 0.796078431372549, 1.0)},
     'CMB-S4-LAT': {'fsky':0.4, 'fwhm':1.0, 'noise': 1.4142, 'lmin': 30., 'lmax': 4000., 'ref':'https://arxiv.org/pdf/1907.04473',
