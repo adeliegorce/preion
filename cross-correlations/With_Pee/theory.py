@@ -75,6 +75,7 @@ class Pee_model:
         asym_h_reion=True,
         alpha0=3.7,
         kappa=0.10,
+        kf=9.4, g=0.5, alpha=2.,
         helium=True,
         helium2=True,
         xe_recomb=1.0e-4,
@@ -130,6 +131,18 @@ class Pee_model:
                 Minimum bubble size, in Mpc-1.
                 See Gorce et al. 2020 for model.
                 Default is 0.10.
+            kf (float)
+                Turnover in the baryon bias, in Mpc-1.
+                See Shaw et al. 2012 for model.
+                Default is 9.4.
+            g (float)
+                Turnover scaling in the baryon bias, in Mpc-1.
+                See Shaw et al. 2012 for model.
+                Default is 0.5.
+            alpha (float)
+                Power law in the baryon bias.
+                See Shaw et al. 2012 for model.
+                Default is 2.
             helium (boolean)
                 If helium is True, the first reionisation of He is included by
                 multiplying the H ionisation level by fH = 1.08.
@@ -310,11 +323,11 @@ class Pee_model:
         self.zre_h = zre_h
         self.dz_h = dz_h
         self.z_early = z_early
-        if self.asym_h_reion:
-            self.zend_h = self.zre_h - self.dz_h
-        else:
-            self.zend_h = self.zre_h - self.dz_h / 2.0
-        self.alpha = 0.0
+        # if self.asym_h_reion:
+        self.zend_h = self.zre_h - self.dz_h
+        # else:
+        #     self.zend_h = self.zre_h - self.dz_h
+        self.alpha_xe = 0.0
         if self.verbose:
             print(f"zre_h = {self.zre_h:.1f}, zend = {self.zend_h:.1f}")
 
@@ -363,6 +376,11 @@ class Pee_model:
                     'Reverting the full computation.')
                 self.use_ksz_emulator = False
 
+        # Late-time Pbb shape parameters
+        self.kf = kf
+        self.g = g
+        self.alpha = alpha
+
         # Initialise arrays for kSZ computation
         self.x_i_z_integ = np.zeros(z_integ.size)  # ionisation level of IGM
         self.tau_z_integ = np.zeros(z_integ.size)  # thomson optical depth
@@ -396,7 +414,7 @@ class Pee_model:
             xe_h = np.ones_like(z)
             # H reionisation
             m = z > self.zend_h
-            xe_h[m] = np.abs((self.z_early - z[m]) / (self.z_early - self.zend_h)) ** self.alpha
+            xe_h[m] = np.abs((self.z_early - z[m]) / (self.z_early - self.zend_h)) ** self.alpha_xe
         else:
             deltay = 1.5 * np.sqrt(1 + self.zre_h) * self.dz_h
             xod = ((1 + self.zre_h) ** 1.5 - (1 + z) ** 1.5) / deltay
@@ -438,20 +456,24 @@ class Pee_model:
         cos = cosmology.FlatLambdaCDM(
             H0=self.h * 100, Tcmb0=self.T_cmb, Ob0=self.Ob_0, Om0=self.Om_0
         )
-        z = np.sort(z)
-        xe = np.sort(self.xe(z))[::-1]
+        sign_dz = np.diff(z).mean()/np.abs(np.diff(z).mean())
+        zlin = np.sort(z)[::-1]
+        xe = np.sort(self.xe(z))
 
         integ = (
             constants.c.value
             * constants.sigma_T.value
             * self.nh
             * xe
-            / cos.H(z).si.value
-            * (1 + z) ** 2
+            / cos.H(zlin).si.value
+            * (1 + zlin) ** 2
         )
-        tofz = cumtrapz(integ[::-1], z, initial=0)[::-1]
+        tofz = -cumtrapz(integ, zlin, initial=0)
 
-        return tofz
+        if sign_dz > 0:
+            return tofz[::-1]
+        else:
+            return tofz
 
     def W(self, k, x):
         """
@@ -471,7 +493,7 @@ class Pee_model:
         """
         return 10**self.alpha0 * x ** (-0.2) / (1.0 + x * (k / self.kappa) ** 3.0)
 
-    def bdH(self, k, z, kf=9.4, g=0.5):
+    def bdH(self, k):
         """
         Electrons - matter bias after reionisation.
 
@@ -481,22 +503,13 @@ class Pee_model:
         ----------
             k: float, array of floats
                 Fourier modes to compute the bias at.
-            z: float, array of floats
-                Redshift to compute the bias at.
-            kf: float
-                Mode [Mpc-1] where baryon power spectrum starts
-                diverging from matter power spectrum.
-                Default is 9.4.
-            g: float
-                Amplitude of the divergence.
-                Default is 0.5 (no unit).
         Outputs
         -------
             b: array of floats
-                Bias for k and z.
+                Bias for k.
         """
 
-        return 0.5 * (np.exp(-k / kf) + 1.0 / (1.0 + np.power(g * k / kf, 2.0)))
+        return 0.5 * (np.exp(-k / self.kf) + 1.0 / (1.0 + np.power(self.g * k / self.kf, self.alpha)))
 
     def Pee(self, k, z):
         """
@@ -528,7 +541,7 @@ class Pee_model:
             self.run_camb(kmax_pk=kmax_pk)
 
         Pee = (self.f - self.xe(z)) / self.f * self.W(k, self.xe(z))
-        Pee += self.xe(z) / self.f * self.bdH(k, z) * self.Pk(k, z)
+        Pee += self.xe(z) / self.f * self.bdH(k) * self.Pk(k, z)
 
         return Pee
 
@@ -537,7 +550,7 @@ class Pee_model:
         Initialise reionisation history.
 
         Running this method initialises reionisation
-        parameters such as self.tau and self.alpha,
+        parameters such as self.tau and self.alpha_xe,
         as well as fills reionisation-related arrays
         for kSZ computation.
         """
@@ -545,9 +558,9 @@ class Pee_model:
         if self.asym_h_reion:
             self.zend_h = self.zre_h - self.dz_h
         else:
-            self.zend_h = self.zre_h - self.dz_h / 2.0
+            self.zend_h = self.zre_h - self.dz_h
         if self.asym_h_reion:
-            self.alpha = np.log(.5) / np.log(
+            self.alpha_xe = np.log(.5) / np.log(
                 (self.z_early - self.zre_h) / (self.z_early - self.zend_h)
             )
 
@@ -559,7 +572,7 @@ class Pee_model:
                 'kappa': self.kappa,
             })
 
-        self.tau = self.xe2tau(z3)[0]
+        self.tau = self.xe2tau(z3).max()
         tauf = interp1d(z3, self.xe2tau(z3))  # interpolation
         self.x_i_z_integ = self.xe(z_integ)  # reionisation history
         self.tau_z_integ = tauf(z_integ)  # thomson optical depth
@@ -794,7 +807,7 @@ class Pee_model:
 
         return D_ells
 
-    def get_ksz(self, ells, signal="patchy", Dells=True):
+    def get_ksz(self, ells, signal="patchy", zmin=None, zmax=None, Dells=True):
         """
         Compute kSZ angular power spectrum for given model at ell.
 
@@ -806,6 +819,14 @@ class Pee_model:
                 Wich kSZ signal to compute.
                 Options are 'late-time', 'patchy' or 'both'.
                 Default is patchy.
+            zmin: float
+                Lower limit of the integration range, if not looking
+                for patchy or late-time signal specifically.
+                Default: None.
+            zmax: float
+                Upper limit of the integration range, if not looking
+                for patchy or late-time signal specifically.
+                Default: None.
             Dells: boolean
                 If True, give the results in terms of
                 D(l) = Tcmb**2 * l(l+1)Cl/2/pi.
@@ -816,6 +837,8 @@ class Pee_model:
         """
 
         if self.use_ksz_emulator:
+            if (zmin is not None) or (zmax is not None):
+                warnings.warn('Using the emulator: cannot choose integration range.')
             pksz = self.pksz_emulator.get_cls(
                 cosmo_dict=self.emul_dict,
                 ells=ells,
@@ -834,13 +857,29 @@ class Pee_model:
 
         else:
             if signal == "late-time":
-                g = z_integ < self.zend_h
+                zmin_mask = z_integ.min()
+                zmax_mask = self.zend_h
             elif signal == "both":
-                g = np.ones(self.x_i_z_integ.size, dtype=bool)
+                zmin_mask = z_integ.min()
+                zmax_mask = z_integ.max()
+                # g = np.ones(self.x_i_z_integ.size, dtype=bool)
             elif signal == "patchy":
-                g = z_integ >= self.zend_h
+                zmin_mask = self.zend_h
+                zmax_mask = z_integ.max()
+                # g = z_integ >= self.zend_h
             else:
                 raise ValueError("signal must be both, patchy, or late-time.")
+            if zmin is not None:
+                signal = 'patchy'
+                zmin_mask = zmin
+                if zmax is None:
+                    zmax_mask = z_integ.max()
+            if zmax is not None:
+                signal = 'patchy'
+                zmax_mask = zmax
+                if zmin is None:
+                    zmin_mask = z_integ.min()
+            g = (z_integ <= zmax_mask) & (z_integ > zmin_mask)
 
             ells = np.atleast_1d(ells)
 
@@ -850,7 +889,7 @@ class Pee_model:
             cos = cosmology.FlatLambdaCDM(
                 H0=self.H0, Tcmb0=self.T_cmb, Ob0=self.Ob_0, Om0=self.Om_0
             )
-            kmax_ells = np.max(ells) / cos.comoving_distance(z_min).value
+            # kmax_ells = np.max(ells) / cos.comoving_distance(z_min).value
 
             # Define integration ranges
             k_z_integ = ells[:, None] / self.eta_z_integ  # in [Mpc-1]
@@ -950,7 +989,7 @@ class Pee_model:
                 return self.Cl_to_Dl(ells, C_ells)
 
     def get_p21(self, k, z, mK=True, log=False, pk_units=True):
-        P21 = (1.0 - 2.0 * self.xe(z) / self.f) * self.bdH(k, z) * self.Pk(k, z)
+        P21 = (1.0 - 2.0 * self.xe(z) / self.f) * self.bdH(k) * self.Pk(k, z)
         P21 += (self.xe(z) / self.f) ** 2 * self.Pee(k, z)
         if not pk_units:
             P21 *= k ** 3 / 2.0 / np.pi**2
@@ -1055,7 +1094,7 @@ class Pee_model:
         else:
             return ells * (ells + 1.) * C_ells / 2. / np.pi
 
-    def get_tau(self, ells, signal="patchy", Dells=True, zlin=np.arange(0.01, 30., step=0.1)):
+    def get_tau(self, ells, signal="patchy", zmin=None, zmax=None, Dells=True, zlin=np.arange(0.01, 30., step=0.1)):
         """
         Compute tau angular power spectrum for given model at ell.
 
@@ -1077,13 +1116,35 @@ class Pee_model:
         """
 
         if signal == "late-time":
-            g = zlin < self.zend_h
+            zmin_mask = zlin.min()
+            zmax_mask = self.zend_h
         elif signal == "both":
-            g = np.ones(zlin.size, dtype=bool)
+            zmin_mask = zlin.min()
+            zmax_mask = zlin.max()
         elif signal == "patchy":
-            g = zlin >= self.zend_h
+            zmin_mask = self.zend_h
+            zmax_mask = zlin.max()
         else:
             raise ValueError("signal must be both, patchy, or late-time.")
+        if zmin is not None:
+            signal = 'patchy'
+            zmin_mask = zmin
+            if zmax is None:
+                zmax_mask = zlin.max()
+        if zmax is not None:
+            signal = 'patchy'
+            zmax_mask = zmax
+            if zmin is None:
+                zmin_mask = zlin.min()
+        g = (zlin <= zmax_mask) & (zlin > zmin_mask)
+        # if signal == "late-time":
+        #     g = zlin < self.zend_h
+        # elif signal == "both":
+        #     g = np.ones(zlin.size, dtype=bool)
+        # elif signal == "patchy":
+        #     g = zlin >= self.zend_h
+        # else:
+        #     raise ValueError("signal must be both, patchy, or late-time.")
 
         cos = cosmology.FlatLambdaCDM(
             H0=self.h * 100, Tcmb0=self.T_cmb, Ob0=self.Ob_0, Om0=self.Om_0
@@ -1303,8 +1364,8 @@ class Pee_model:
         CBB_screen_temp[m] = CBB_screen_lowl * np.ones(np.sum(m)) * 0.5 * np.exp(-2. * self.tau)
         # ells > 2000
         m2 = ells > 2000
-        Erms2 = np.sum(self.get_primary_spectra(ells=np.arange(5000), Dells=False, unit='muK')[:, 2]*(2.*np.arange(5000)+1.)/4./np.pi)
-        CBB_screen_temp[m2] = 0.5 * Erms2 * Cell_tt[m2] * np.exp(-2.*self.tau)
+        # Erms2 = np.sum(self.get_primary_spectra(ells=np.arange(5000), Dells=False, unit='muK')[:, 2]*(2.*np.arange(5000)+1.)/4./np.pi)
+        CBB_screen_temp[m2] = 0.5 * self.Erms()**2 * Cell_tt[m2] * np.exp(-2.*self.tau)
         # 300 <= ell <= 2000
         CBB_screen = interp1d(ells[m | m2], CBB_screen_temp[m | m2], fill_value='extrapolate', bounds_error=False)(ells)
 
@@ -1312,6 +1373,9 @@ class Pee_model:
             return CBB_screen
         else:
             return CBB_screen * ells * (ells + 1.) / 2. / np.pi
+
+    def Erms(self):
+        return np.sqrt(np.sum(self.get_primary_spectra(ells=np.arange(5000), Dells=False, unit='muK')[:, 2]*(2.*np.arange(5000)+1.)/4./np.pi))
 
     def T0(self, z):
 
@@ -1397,7 +1461,7 @@ class Pee_model:
         Pee_zlin = self.Pee(k_zlin, zlin)
         self.check_ps(Pee_zlin)
 
-        Pbb_zlin = self.bdH(k_zlin, zlin) * self.Pk(k_zlin, zlin)
+        Pbb_zlin = self.bdH(k_zlin) * self.Pk(k_zlin, zlin)
         self.check_ps(Pbb_zlin)
 
         prefac = (
@@ -1425,6 +1489,148 @@ class Pee_model:
         )
         self.check_result(C_ells)
         C_ells *= C_ell_tau21_integrand.unit
+
+        if not Dells:
+            return C_ells.to(units.uK)
+        else:
+            return ells * (ells + 1.) * C_ells.to(units.uK) / 2. / np.pi
+
+
+    def get_BB_21_cross(self, z21, ells, Dells=True, delta_nu=0., nz=100, mode='both', Qrms=17.0):
+        """
+        Compute angular cross spectrum of tau and 21cm at ell, in muK.
+
+        Parameters
+        ----------
+            z21: float
+                Redshift of the observed 21cm signal.
+            ells: array of floats
+                Angular multipole to compute the spectrum at.
+            Dells: boolean
+                If True, give the results in terms of
+                D(l) = l(l+1)Cl/2/pi.
+                Default is False.
+            delta_nu: float
+                Width of the top-hat function representing the
+                frequency resolution of the interferometer, in MHz.
+                Default is zero (Dirac delta).
+            mode: str
+                Which contribution to compute (scattering or screening,
+                or their sum).
+            Qrms: float
+                rms of the primary quadrupole, in uK, taken constant
+                with redshift. Default is 17uK.
+        Outputs
+        ------
+            Array of cross-power for ells, in uK2.
+        """
+        cos = cosmology.FlatLambdaCDM(
+            H0=self.h * 100, Tcmb0=self.T_cmb, Ob0=self.Ob_0, Om0=self.Om_0
+        )
+
+        delta_nu *= units.MHz
+
+        nu21_ref_unit = nu21_ref * units.MHz
+
+        if delta_nu == 0.:
+            zlin = np.linspace(z21-0.1, z21+0.2, nz)        
+        else:
+            nu21 = nu21_ref_unit / (1. + z21)  # MHz
+            numax = nu21 + delta_nu/2.
+            numin = nu21 - delta_nu/2.
+            zmax = (nu21_ref_unit / numin) - 1.
+            zmin = (nu21_ref_unit / numax) - 1.
+            zlin = np.linspace(zmin.value-0.1, zmax.value+0.2, nz)
+        ells = np.atleast_1d(ells)
+        kmax_ells = np.max(ells) / cos.comoving_distance(zlin.min()).value
+
+        if not self.has_camb_run:
+            warnings.warn('Re-running CAMB...')
+            self.run_camb(kmax_pk=min(kmax_ells, kmax_camb))
+
+        W21_zlin = np.zeros_like(zlin) * 1. / units.MHz
+        iz21 = np.argmin(np.abs(zlin - z21))
+
+        if delta_nu == 0.:
+            W21_zlin[iz21] = 1. / units.MHz
+        else:
+            nu_integ = nu21_ref_unit / (1. + zlin)  # MHz
+            # print(f'{delta_nu:.2f}, {np.abs(np.diff(nu_integ)[iz21]):.2f}')
+            if np.abs(np.diff(nu_integ)[iz21]) > delta_nu:
+                raise ValueError('dnu smaller than zlin resolution '
+                                 f'({delta_nu:.2f}, {np.abs(np.diff(nu_integ)[iz21]):.2f}), '
+                                 'increase nz.')
+            mask = (zlin < zmax) & (zlin >= zmin)
+            W21_zlin[mask] = 1./(numax-numin)  # unit T
+        W21_zlin *= nu21_ref_unit * cos.H(zlin).si / (1+zlin)**2 / constants.c.si  # units L-1
+        W21_zlin = W21_zlin.to(1./units.Mpc)
+        W21_zlin /= np.trapz(W21_zlin, cos.comoving_distance(zlin))
+
+        # Define integration ranges
+        k_zlin = ells[:, None] / cos.comoving_distance(zlin).value  # [Mpc-1]
+        if (k_zlin.min() < kmin_camb) or (k_zlin.max() > kmax_camb):
+            raise ValueError("Extrapolating the matter PK too far.")
+
+        Pee_zlin = self.Pee(k_zlin, zlin)
+        self.check_ps(Pee_zlin)
+
+        Pbb_zlin = self.bdH(k_zlin) * self.Pk(k_zlin, zlin)
+        self.check_ps(Pbb_zlin)
+
+        # scattering
+        prefac = (
+            constants.c.si  # speed of light [m.s-1]
+            * constants.sigma_T.si  # Thomson cross section [m2]
+            * (self.nh / units.m**3)  # baryon nb density [m-3]
+            * self.T0(z21)
+        )
+        prefac_scat = (
+            prefac
+            * np.sqrt(3.)/10.
+            * (Qrms * units.uK.si)
+        )
+        # screening
+        prefac_scr = (
+            prefac
+            * 1./np.sqrt(2.)
+            * (self.Erms() * units.uK.si)
+        )
+        # Compute C_tau(ell) integrand, unit 1
+        C_ell_bb21_integrand = (
+            1.
+            * self.xe(zlin)
+            * (1. + zlin) ** 2
+            / cos.H(zlin).si
+            / cos.comoving_distance(zlin)**2
+            * np.exp(-2. * self.tau_z_integ[None, :])
+            * [Pbb_zlin - self.xe(zlin) * Pee_zlin] * (units.Mpc)**3
+            * W21_zlin.to(1./units.Mpc)
+        )[0]
+
+        # Compute C_kSZ(ell), no units
+        if mode == 'scattering':
+            C_ells = np.array(
+                [trapz((C_ell_bb21_integrand[i] * prefac_scat.si).value, zlin)
+                for i in range(ells.size)]
+            )
+        elif mode == 'screening':
+            C_ells = np.array(
+                [trapz((C_ell_bb21_integrand[i] * prefac_scr.si).value, zlin)
+                for i in range(ells.size)]
+            )
+        elif mode == 'both':
+            C_ells_scat = np.array(
+                [trapz((C_ell_bb21_integrand[i] * prefac_scat.si).value, zlin)
+                for i in range(ells.size)]
+            )
+            C_ells_scr = np.array(
+                [trapz((C_ell_bb21_integrand[i] * prefac_scr.si).value, zlin)
+                for i in range(ells.size)]
+            )
+            C_ells = C_ells_scat + C_ells_scr
+
+        self.check_result(C_ells)
+        C_ells *= C_ell_bb21_integrand.unit
 
         if not Dells:
             return C_ells.to(units.uK)
