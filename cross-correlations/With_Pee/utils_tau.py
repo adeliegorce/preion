@@ -14,7 +14,7 @@ from parameters import telescope_specs
 from utils import *
 
 
-def tau_noise(telescope, cls, is_cl=False, key='f_eb', overwrite=True):
+def tau_noise(telescope, cls, is_cl=False, key='f_eb', overwrite=True, folder='/data/glx-calcul3/data1/agorce/cross-correlations/cross-correlations/With_Pee/'):
 
     assert np.shape(cls)[-1] == 6
 
@@ -100,7 +100,7 @@ def tau_noise(telescope, cls, is_cl=False, key='f_eb', overwrite=True):
             cls_ivf[k1+k2] *= ftl[k1] * ftl[k2]
 
     if overwrite:
-        tempfiles = glob.glob(f'./tau_snr/qresp_tau_{key}/*')
+        tempfiles = glob.glob(f'{folder}/tau_snr/qresp_tau_{key}/*')
         for file in tempfiles:
             os.remove(file)
     # The function below performs the quadratic estimation.
