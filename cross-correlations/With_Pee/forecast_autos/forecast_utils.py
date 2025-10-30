@@ -14,11 +14,16 @@ from parameters import telescope_specs
 theta_labels = [r'$z_\mathrm{re}$', r'd$z$', r'log$\alpha_0$', r'$\kappa$']
 prior_bounds = [(5.5, 10.), (0., 4.), (0, 6.), (0, 0.4)]
 
-def dobs_dz(theta, idz, lrange, low_lrange=None, dev=0.05, cos=cosmology.Planck18, use_ksz_emulator=False):
 
-    lrange = np.atleast_1d(lrange)
-    if low_lrange is None:
-        low_lrange = np.copy(lrange)
+def dobs_dz(theta, idz, ells, dev=0.05, cos=cosmology.Planck18, use_ksz_emulator=False):
+
+    assert len(ells) == 3
+    ells_tau = ells[0]
+    ells_ksz = ells[1]
+    ells_bb = ells[2]
+    # lrange = np.atleast_1d(lrange)
+    # if low_lrange is None:
+    #     low_lrange = np.copy(lrange)
     assert np.size(theta) == 4
     assert (idz >= 0) and (idz < np.size(theta))
     assert dev < 1
@@ -53,10 +58,10 @@ def dobs_dz(theta, idz, lrange, low_lrange=None, dev=0.05, cos=cosmology.Planck1
         # Om_0=cos.Om0,
         # verbose=False, run_camb=True,
         # use_ksz_emulator=use_ksz_emulator)
-    ksz_ps_max = preion_model_max.get_ksz(ells=lrange, signal='both', Dells=True)[:, 0]
-    tau_ps_max = preion_model_max.get_tau(ells=lrange, signal='both', Dells=True)[:, 0]
-    scattering_bb = preion_model_max.get_scattering_B_modes(ells=low_lrange, signal='both', Dells=True)
-    screening_bb = preion_model_max.get_screening_B_modes(ells=low_lrange, Dells=True)
+    ksz_ps_max = preion_model_max.get_ksz(ells=ells_ksz, signal='both', Dells=True)[:, 0]
+    tau_ps_max = preion_model_max.get_tau(ells=ells_tau, signal='both', Dells=True)[:, 0]
+    scattering_bb = preion_model_max.get_scattering_B_modes(ells=ells_bb, signal='both', Dells=True)
+    screening_bb = preion_model_max.get_screening_B_modes(ells=ells_bb, Dells=True)
     total_bb_max = np.sum(scattering_bb, axis=1)+screening_bb
 
     theta_min = np.copy(theta)
@@ -76,10 +81,10 @@ def dobs_dz(theta, idz, lrange, low_lrange=None, dev=0.05, cos=cosmology.Planck1
     preion_model_min.alpha0 = theta_min[2]
     preion_model_min.kappa = theta_min[3]
     preion_model_min.init_reionisation_history()
-    ksz_ps_min = preion_model_min.get_ksz(ells=lrange, signal='both', Dells=True)[:, 0]
-    tau_ps_min = preion_model_min.get_tau(ells=lrange, signal='both', Dells=True)[:, 0]
-    scattering_bb = preion_model_min.get_scattering_B_modes(ells=low_lrange, signal='both', Dells=True)
-    screening_bb = preion_model_min.get_screening_B_modes(ells=low_lrange, Dells=True)
+    ksz_ps_min = preion_model_min.get_ksz(ells=ells_ksz, signal='both', Dells=True)[:, 0]
+    tau_ps_min = preion_model_min.get_tau(ells=ells_tau, signal='both', Dells=True)[:, 0]
+    scattering_bb = preion_model_min.get_scattering_B_modes(ells=ells_bb, signal='both', Dells=True)
+    screening_bb = preion_model_min.get_screening_B_modes(ells=ells_bb, Dells=True)
     total_bb_min = np.sum(scattering_bb, axis=1)+screening_bb
 
     deriv_ksz = (ksz_ps_max-ksz_ps_min) / (theta_max[idz]-theta_min[idz])
@@ -138,6 +143,8 @@ def make_datapoints(
                 warnings.warn(f'Min l below {tel} limit.')
             if (np.max(ells[i]) > telescope_specs[tel]['lmax']):
                 warnings.warn(f'Max l above {tel} limit.')
+            if np.diff(ells[i])[-1] != telescope_specs[tel]['Delta_ell']:
+                warnings.warn(f'Delta l diff from {tel} spec ({np.diff(ells[i])[-1]} vs. {telescope_specs[tel]["Delta_ell"]}).')
             ells[i] = np.array(ells[i])
             ells[i] = ells[i][np.logical_and(ells[i] >= telescope_specs[tel]['lmin'], ells[i] <= telescope_specs[tel]['lmax'])]
     ells_tau, ells_ksz, ells_bb = ells
@@ -149,28 +156,34 @@ def make_datapoints(
         verbose=False, run_camb=True,
         use_ksz_emulator=use_ksz_emulator)
     ksz_ps = preion_model.get_ksz(ells=ells_ksz, signal='patchy', Dells=True)[:, 0]
-    tau_ps = np.sum(preion_model.get_tau(ells=ells_tau, signal='both', Dells=True), axis=1)
-    total_bb = preion_model.get_B_modes(ells=ells_bb, Dells=True)
+    tau_ps = preion_model.get_tau(ells=ells_tau, signal='both', Dells=True).sum(axis=1)
+    total_bb = preion_model.get_B_modes(ells=ells_bb, Dells=True, Qrms=17.0)
 
     if telescopes is not None:
+
+        ksz_obs = ksz_ps+noise(ells_ksz, telescope_specs[tel_ksz], pol=False, is_cl=False)
+        cov_ksz = np.diag(
+            1./(2. * ells_ksz+1.) / telescope_specs[tel_ksz]['fsky'] * 2. * ksz_obs**2            
+            / telescope_specs[tel_ksz]['Delta_ell']
+        )
+        if use_ksz_emulator == 'RF':
+            print(f'Adding emulator reconstruction errors for {use_ksz_emulator}')
+            cov_ksz += np.diag(np.ones_like(ells_ksz) * 0.01**2) # emulator error (~ constant with multipole)
+        cov_bb = np.diag(
+            1./(2. * ells_bb+1.) / telescope_specs[tel_bb]['fsky'] * 2. * (total_bb+noise(ells_bb, telescope_specs[tel_bb], pol=True, is_cl=False))**2            
+            / telescope_specs[tel_bb]['Delta_ell']
+        )
+
         ls_temp = np.arange(int(telescope_specs[tel_tau]['lmax'])+1)
         CMB_Cells = preion_model.get_primary_spectra(ells=ls_temp, Dells=False)
         CMB_Cells = CMB_Cells[:, [0, 1, 2, 4, 3]]
         tau_temp = np.r_[0., np.sum(preion_model.get_tau(ells=ls_temp[1:], signal='both', Dells=False), axis=1)]
-        tau_noise_res = tau_noise(tel_tau, np.c_[CMB_Cells, tau_temp], is_cl=False)
-
+        tau_noise_res = tau_noise(tel_tau, np.c_[CMB_Cells, tau_temp], is_cl=False, folder='./')
         cov_tau = np.diag(
-            sample_var(ells_tau, tau_ps+interp1d(ls_temp, tau_noise_res)(ells_tau), telescope_specs[tel_tau])**2
-            / np.diff(ells_tau).mean()
+            1./(2. * ells_tau+1.) / telescope_specs[tel_tau]['fsky'] * 2. * (tau_ps+interp1d(ls_temp, tau_noise_res)(ells_tau))**2
+            /  telescope_specs[tel_tau]['Delta_ell']
         )
-        cov_ksz = np.diag(
-            sample_var(ells_ksz, ksz_ps+noise(ells_ksz, telescope_specs[tel_ksz], pol=False), telescope_specs[tel_ksz])**2
-            / np.diff(ells_ksz).mean()
-        )
-        cov_bb = np.diag(
-            sample_var(ells_bb, total_bb+noise(ells_bb, telescope_specs[tel_bb], pol=True), telescope_specs[tel_bb])**2
-            / np.diff(ells_bb).mean()
-        )
+
     else:
         cov_tau = np.diag(np.ones_like(tau_ps))
         cov_ksz = np.diag(np.ones_like(ksz_ps))
@@ -192,11 +205,15 @@ def make_datapoints(
     return tau_ps, ksz_ps, total_bb, cov_tau, cov_ksz, cov_bb
 
 
-def get_derivatives(theta_true, ells, low_ells=None, run_derivatives=False, dev=0.05, use_ksz_emulator=False, verbose=False):
+def get_derivatives(theta_true, ells, run_derivatives=False, dev=0.05, use_ksz_emulator=False, verbose=False):
 
-    ells = np.atleast_1d(ells)
-    if low_ells is None:
-        low_ells = np.copy(ells)
+    # ells = np.atleast_1d(ells)
+    assert len(ells) == 3
+    ells_tau = ells[0]
+    ells_ksz = ells[1]
+    ells_bb = ells[2]
+    # if low_ells is None:
+    #     low_ells = np.copy(ells)
     assert np.size(theta_true) >= 4
     run = bool(run_derivatives)
 
@@ -210,7 +227,7 @@ def get_derivatives(theta_true, ells, low_ells=None, run_derivatives=False, dev=
                 warnings.warn('Pre-saved derivatives are not compatible with ell range. Re-computing...')
                 run = True
         else:
-            deriv_list.append(dobs_dz(theta_true, idz=idz, dev=dev, lrange=ells, low_lrange=low_ells, use_ksz_emulator=use_ksz_emulator))
+            deriv_list.append(dobs_dz(theta_true, idz=idz, dev=dev, ells=ells, use_ksz_emulator=use_ksz_emulator))
 
     return deriv_list
 
