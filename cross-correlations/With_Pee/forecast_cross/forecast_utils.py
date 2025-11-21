@@ -161,7 +161,8 @@ def make_datapoints(
         if np.max(ells) > lmax:
             warnings.warn(f'Max l above {tel_tau} limit.')
         if np.diff(ells)[-1] != dell:
-            warnings.warn(f'Delta l diff from {tel_tau} spec ({np.diff(ells)[-1]} vs. {telescope_specs[tel_tau]["Delta_ell"]}).')
+            warnings.warn(f'Delta l diff from {tel_tau} spec ({np.diff(ells)[-1]} vs. {dell}).')
+            dell = np.diff(ells)[-1]
 
     datafile = f'../data/dltau_{tel_tau}.txt'
     if os.path.exists(datafile):
@@ -208,7 +209,7 @@ def make_datapoints(
         if np.isinf(Nl_21).any():
             print(f'Warning: 21cm noise values at l={ells[np.isinf(Nl_21)]} are infinite.')
         Dl_tau21[iz] = preion_model.get_tau_21_cross(z21, ells, Dells=True, delta_nu=delta_nu.value).to(units.uK).value
-        Dltau21_err[iz] = 1. / (2.*ells+1) / fsky / telescope_specs[tel_tau]['Delta_ell'] * (
+        Dltau21_err[iz] = 1. / (2.*ells+1) / fsky / dell * (
                 Dl_tau21[iz]**2 + ((Dl_21 + Nl_21) * (Dl_tautau + Nl_tautau))
             )
         if verbose:
