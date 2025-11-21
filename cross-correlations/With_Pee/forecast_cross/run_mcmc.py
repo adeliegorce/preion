@@ -21,18 +21,17 @@ randomness = False
 overwrite = True
 use_ksz_emulator = 'RF'
 
-label21 = 'hera_moderate'
-delta_nu = 100.*units.MHz
-zs = [7.]  # [5.5, 6., 6.5, 7., 8., 9., 10., 11., 12., 14.]
-
-tel_tau = 'CMB-S4-LAT'
+tel_tau = sys.argv[1]  # 'CMB-S4-LAT'
+label21 = sys.argv[2]  # 'hera_moderate'
+delta_nu = float(sys.argv[3])*units.MHz
+zs = np.atleast_1d(sys.argv[4].split(','), dtype=float)  # e.g., '7.0,8.0'
 label = f'taux21_{tel_tau}_{label21}'
 
 
-niterations = 20#000
-nwalkers = 2#8
+niterations = 25000
+nwalkers = 8
 ncores = mp.cpu_count()
-print(ncores)
+print(f'\nRunning on {ncores} CPUs with {nwalkers} walkers for {niterations} iterations.')
 
 theta_true = [7.0, 1.5, 3.7, 0.10]
 ndim = len(theta_true)
@@ -86,7 +85,7 @@ def lnprob(theta):
 def lnlike(theta):
     model, tau_ps, ps21 = get_model(theta)
     m_inf = ~np.isinf(tau21_err)
-    like = (model[m_inf] - tau21_data[m_inf])**2 / tau21_err[m_inf]
+    like = (model[m_inf] - tau21_data[m_inf])**2 / tau21_err[m_inf]**2
     return -0.5 * like.sum(), model, tau_ps, ps21
 
 
@@ -99,7 +98,7 @@ def lnprior(theta, priors=priors):
 
 
 t0 = time.time()
-print(lnlike(theta_true)[0])
+print(f'Likelihood of true parameters: {lnprob(theta_true)[0]:.2f}')
 t1 = time.time()
 print(f'It takes {t1-t0:.1f} seconds to compute one model.')
 # blobs & backend
@@ -114,8 +113,10 @@ dtype = [("Dl_tau21", float, (np.size(zs), np.size(ells),)),
 
 p0 = [np.random.uniform(low, high, size=nwalkers) for low, high in priors]
 p0 = np.vstack(p0).T
-print(p0)
-print(priors)
+print('Likelihood at initial positions:', end=' ')
+for pset in p0:
+    print(f'{lnprob(pset)[0]:.2f}', end=', ')
+print('')
 
 with mp.Pool(ncores) as pool:
     sampler = emcee.EnsembleSampler(
@@ -124,7 +125,7 @@ with mp.Pool(ncores) as pool:
         pool=pool,
         blobs_dtype=dtype,)
     t0 = time.time()
-    state = sampler.run_mcmc(p0, niterations, progress=True)
+    state = sampler.run_mcmc(p0, niterations, progress=False)
     t1 = time.time()
 print(f'It took {(t1-t0)/60./60.:.1f} hours to run {niterations} iterations with {nwalkers} walkers.')
 
