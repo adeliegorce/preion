@@ -132,7 +132,7 @@ def make_datapoints(
         cos=cosmology.Planck18, save=None, verbose=True):
 
     if verbose:
-        print(f'\nComputing sensitivity for {tel_tau} x {label21}, '
+        print(f'Computing sensitivity for {tel_tau} x {label21}, '
               f'with a {delta_nu:.1f} bandwidth.')
 
     preion_model = Pee_model(
