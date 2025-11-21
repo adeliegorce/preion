@@ -4,6 +4,7 @@ sys.path.insert(0, '../')
 import numpy as np
 from astropy import cosmology, units, constants
 from scipy.interpolate import RegularGridInterpolator, interp1d
+import warnings
 
 from theory import Pee_model
 from utils_tau import tau_noise
@@ -127,8 +128,8 @@ def get_cl21_noise(noise_function, z21, ells, Dells=True, delta_nu=0., nz=100, f
 
 def make_datapoints(
         theta, tel_tau, label21='ska_aast_optimistic',
-        delta_nu=100.*units.MHz, zs=[5.5, 6., 6.5, 7., 7.5, 8., 9., 10., 11., 12., 14.],
-        use_ksz_emulator=False, randomness=False,
+        delta_nu=100.*units.MHz, zs=[7.],
+        use_ksz_emulator=False, randomness=False, ells=None,
         cos=cosmology.Planck18, save=None, verbose=True):
 
     if verbose:
@@ -146,19 +147,30 @@ def make_datapoints(
     assert tel_tau in telescope_specs.keys()
     lmin, lmax = telescope_specs[tel_tau]['lmin'], telescope_specs[tel_tau]['lmax']
     dell = telescope_specs[tel_tau]['Delta_ell']
-    if tel_tau.find('SAT') >= 0:
-        ells = np.r_[lmin, np.arange(dell, lmax+dell, step=dell)]
+    if ells is None:
+        if tel_tau.find('SAT') >= 0:
+            ells = np.r_[lmin, np.arange(dell, lmax+dell, step=dell)]
+        else:
+            ells = np.arange(lmin, lmax+dell, step=dell)
+            if ells[-1] > lmax:
+                ells[-1] = lmax
     else:
-        ells = np.arange(lmin, lmax+dell, step=dell)
-        if ells[-1] > lmax:
-            ells[-1] = lmax
+        ells = np.atleast_1d(ells)
+        if np.min(ells) < lmin:
+            warnings.warn(f'Min l below {tel_tau} limit.')
+        if np.max(ells) > lmax:
+            warnings.warn(f'Max l above {tel_tau} limit.')
+        if np.diff(ells)[-1] != dell:
+            warnings.warn(f'Delta l diff from {tel_tau} spec ({np.diff(ells)[-1]} vs. {telescope_specs[tel_tau]["Delta_ell"]}).')
 
     datafile = f'../data/dltau_{tel_tau}.txt'
     if os.path.exists(datafile):
-        ells2, Dl_tautau, Nl_tautau = np.loadtxt(datafile, unpack=True)
-        if not np.all(ells2 == ells):
-            print(f'Warning: {datafile} does not match the current ells, extrapolating...')
-            Dl_tautau = interp1d(ells2, Dl_tautau, bounds_error=False, fill_value='extrapolate')(ells)
+        ells2, Dl_tautau2, Nl_tautau2 = np.loadtxt(datafile, unpack=True)
+        if not np.array_equal(ells2, ells):
+            print(f'Warning: {datafile} does not match the current ells, inter(extra)polating...')
+            m_inf = ~np.isinf(Nl_tautau2)
+            Dl_tautau = interp1d(ells2[m_inf], Dl_tautau2[m_inf], bounds_error=False, fill_value='extrapolate')(ells)
+            Nl_tautau = interp1d(ells2[m_inf], Nl_tautau2[m_inf], bounds_error=False, fill_value='extrapolate')(ells)
         print(f'Loaded data from {datafile}')
     else:
         print(f'No data file found at {datafile}, computing...')
@@ -175,7 +187,6 @@ def make_datapoints(
         Dl_tautau = np.random.normal(Dl_tautau, Nl_tautau)
 
     # 21cm obs parameters
-
     if label21.find('ska') >= 0:
         fov_ska = (9.10*units.deg)**2
         fsky = fov_ska.to(units.rad**2)/(4.*np.pi*units.rad**2)
