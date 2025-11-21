@@ -16,9 +16,12 @@ from parameters import telescope_specs
 from theory import Pee_model
 
 cos = cosmology.Planck18
-ells = [np.linspace(10, 1000, 50), np.arange(1000, 8000, step=500), np.linspace(10, 1000, 50)]
-telescopes = ['SO-SAT', 'SO-LAT', 'SO-SAT']
-label = 'SO-full_RF'
+# ells = [np.linspace(10, 1000, 50), np.arange(1000, 8000, step=500), np.linspace(10, 1000, 50)]
+telescopes = ['CMB-HD', 'CMB-HD', 'CMB-HD']
+ells = []
+for tel in telescopes:
+    ells.append(np.arange(telescope_specs[tel]['lmin'], telescope_specs[tel]['lmax'], step=telescope_specs[tel]['Delta_ell']))
+label = 'CMB-HD-full_RF'
 randomness = False
 overwrite = True
 use_ksz_emulator = 'RF'
@@ -26,7 +29,7 @@ use_ksz_emulator = 'RF'
 niterations = 20000
 nwalkers = 8
 
-theta_true = [7.0, 1.5, 3.7, 0.10]
+theta_true = [7.5, 2., 4., 0.13]#[7.0, 1.5, 3.7, 0.10]
 ndim = len(theta_true)
 theta_labels = [r'$z_\mathrm{re}$', r'd$z$', r'log$\alpha_0$', r'$\kappa$']
 priors = [(5., 10.), (0.1, 4.5), (2.5, 4.5), (0.05, 0.4)]
@@ -58,7 +61,7 @@ def get_model(theta, ells=ells):
 
     tau_ps = preion_model.get_tau(ells=ells[0], signal='both', Dells=True).sum(axis=1)
     ksz_ps = preion_model.get_ksz(ells=ells[1], signal='patchy', Dells=True)[:, 0]
-    total_bb = preion_model.get_B_modes(ells=ells[2], Dells=True)
+    total_bb = preion_model.get_B_modes(ells=ells[2], Dells=True, Qrms=17.0)
 
     return tau_ps, ksz_ps, total_bb
 
@@ -95,7 +98,8 @@ print(f'It takes {t1-t0:.1f} seconds to compute one model.')
 if os.path.isfile(f'backends/mcmc_{label}_backend.h5') and overwrite:
     os.remove(f'backends/mcmc_{label}_backend.h5')
 backend = emcee.backends.HDFBackend(f'backends/mcmc_{label}_backend.h5')
-backend.reset(nwalkers, ndim)
+if overwrite:
+    backend.reset(nwalkers, ndim)
 dtype = [("tau_models", float, (np.size(ells[0]),)),
          ("ksz_models", float, (np.size(ells[1]),)),
          ("bb_models", float, (np.size(ells[2]),)),]
