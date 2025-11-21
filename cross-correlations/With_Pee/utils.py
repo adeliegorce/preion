@@ -4,6 +4,7 @@ import numpy as np
 from astropy import cosmology, units
 import simulations
 
+
 def plot_field(box, L, iz=None, label='', **kwargs):
 
     N = box.shape[0]
@@ -369,4 +370,3 @@ def noise(ls, telescope, pol=False, is_cl=False):
     if not is_cl:
         nl *= ls*(ls+1.)/2./np.pi
     return nl
-

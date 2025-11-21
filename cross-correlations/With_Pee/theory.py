@@ -685,6 +685,7 @@ class Pee_model:
                 Maximum k used to compute the matter power
                 spectra [Mpc-1].
                 Default is read from parameters.py.
+                If None, then only computes cosmological quantities, no Pk.
             CMB_ells: list of int
                 List of multipoles used to compute the primary CMB spectra.
 
@@ -727,53 +728,55 @@ class Pee_model:
         self.adot_z_integ = (1.0 / (1.0 + z_integ)) * H_z_integ  # [s-1]
         self.n_H_z_integ = self.nh * (1.0 + z_integ) ** 3.0  # baryon nb density [m-3]
 
-        # Linear matter power spectrum P(z,k) in Mpc^3
-            # Pk_integ = self.pk_emulator.get_nonlinear_pk(
-            #         k=kp_integ, cold=True, **{**self.pk_emul_dict, 'expfactor': 1./(1.+z_integ[:, None])}
-            # )[:, :, None]
-            # self.Pk_lin_integ = self.pk_emulator.get_linear_pk(
-            #         k=kp_integ, cold=True, **{**self.pk_emul_dict, 'expfactor': 1./(1.+z_integ[:, None])}
-            # )[:, :, None]  # linear matter power spectrum
-        # else:
-        assert (
-            kmax_pk <= kmax_camb
-        ), "k too large for P(k) extrapolation, modify ell_max or z_min"
-        interp_l = camb.get_matter_power_interpolator(
-            pars,
-            nonlinear=False,
-            kmax=kmax_pk,
-            hubble_units=False,
-            k_hunit=False,
-            zmax=z_max,
-            var1=model.Transfer_nonu,
-            var2=model.Transfer_nonu,
-        )
-        self.Pk_lin = np.vectorize(lambda k, z: interp_l.P(z, k))
-        # Non-linear matter power spectrum
-        interp_nl = camb.get_matter_power_interpolator(
-            pars,
-            nonlinear=True,
-            kmax=kmax_pk,
-            hubble_units=False,
-            k_hunit=False,
-            zmax=z_max,
-            var1=model.Transfer_nonu,
-            var2=model.Transfer_nonu,
-        )
-        self.Pk = np.vectorize(lambda k, z: interp_nl.P(z, k))
+        if kmax_pk is not None:
 
-        self.Pk_lin_integ = self.Pk_lin(
-            kp_integ[:, None], z_integ[:, None, None]
-        )  # linear matter power spectrum
-        self.check_ps(self.Pk_lin_integ)
+            # Linear matter power spectrum P(z,k) in Mpc^3
+                # Pk_integ = self.pk_emulator.get_nonlinear_pk(
+                #         k=kp_integ, cold=True, **{**self.pk_emul_dict, 'expfactor': 1./(1.+z_integ[:, None])}
+                # )[:, :, None]
+                # self.Pk_lin_integ = self.pk_emulator.get_linear_pk(
+                #         k=kp_integ, cold=True, **{**self.pk_emul_dict, 'expfactor': 1./(1.+z_integ[:, None])}
+                # )[:, :, None]  # linear matter power spectrum
+            # else:
+            assert (
+                kmax_pk <= kmax_camb
+            ), "k too large for P(k) extrapolation, modify ell_max or z_min"
+            interp_l = camb.get_matter_power_interpolator(
+                pars,
+                nonlinear=False,
+                kmax=kmax_pk,
+                hubble_units=False,
+                k_hunit=False,
+                zmax=z_max,
+                var1=model.Transfer_nonu,
+                var2=model.Transfer_nonu,
+            )
+            self.Pk_lin = np.vectorize(lambda k, z: interp_l.P(z, k))
+            # Non-linear matter power spectrum
+            interp_nl = camb.get_matter_power_interpolator(
+                pars,
+                nonlinear=True,
+                kmax=kmax_pk,
+                hubble_units=False,
+                k_hunit=False,
+                zmax=z_max,
+                var1=model.Transfer_nonu,
+                var2=model.Transfer_nonu,
+            )
+            self.Pk = np.vectorize(lambda k, z: interp_nl.P(z, k))
 
-        self.has_camb_run = True
+            self.Pk_lin_integ = self.Pk_lin(
+                kp_integ[:, None], z_integ[:, None, None]
+            )  # linear matter power spectrum
+            self.check_ps(self.Pk_lin_integ)
 
-        Pee_integ = self.Pee(kp_integ[:, None], z_integ[:, None, None])
-        Pk_integ = self.Pk(kp_integ[:, None], z_integ[:, None, None])
-        self.check_ps(Pee_integ)
-        self.check_ps(Pk_integ, include_zero=False)
-        self.b_del_e_integ = np.sqrt(Pee_integ / Pk_integ)  # electrons bias
+            self.has_camb_run = True
+
+            Pee_integ = self.Pee(kp_integ[:, None], z_integ[:, None, None])
+            Pk_integ = self.Pk(kp_integ[:, None], z_integ[:, None, None])
+            self.check_ps(Pee_integ)
+            self.check_ps(Pk_integ, include_zero=False)
+            self.b_del_e_integ = np.sqrt(Pee_integ / Pk_integ)  # electrons bias
 
     def Cl_to_Dl(self, ells, Cells):
         """
@@ -879,19 +882,21 @@ class Pee_model:
                 zmax_mask = zmax
                 if zmin is None:
                     zmin_mask = z_integ.min()
-            g = (z_integ <= zmax_mask) & (z_integ > zmin_mask)
+            g = (z_integ <= zmax_mask) & (z_integ >= zmin_mask)
 
             ells = np.atleast_1d(ells)
 
             if np.sum(self.x_i_z_integ) == 0:
                 self.init_reionisation_history()
 
-            cos = cosmology.FlatLambdaCDM(
-                H0=self.H0, Tcmb0=self.T_cmb, Ob0=self.Ob_0, Om0=self.Om_0
-            )
+            # cos = cosmology.FlatLambdaCDM(
+            #     H0=self.H0, Tcmb0=self.T_cmb, Ob0=self.Ob_0, Om0=self.Om_0
+            # )
             # kmax_ells = np.max(ells) / cos.comoving_distance(z_min).value
 
             # Define integration ranges
+            if not self.has_camb_run:
+                self.run_camb(kmax_pk=None)
             k_z_integ = ells[:, None] / self.eta_z_integ  # in [Mpc-1]
 
             k_min_kp = np.sqrt(
@@ -1341,6 +1346,7 @@ class Pee_model:
         ----------
             ells: array of floats
                 Angular multipole to compute the spectrum at.
+                Because of interpolation, ells must be in linear scale.
             Dells: boolean
                 If True, give the results in terms of
                 D(l) = l(l+1)Cl/2/pi.
