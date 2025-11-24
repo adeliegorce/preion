@@ -69,13 +69,13 @@ def get_model(theta, ells=ells):
     preion_model.init_reionisation_history()
 
     model = []
-    tau_ps, ps21 = [], []
+    ps21 = []
     for z21 in zs:
         model.append(preion_model.get_tau_21_cross(z21, ells, Dells=True, delta_nu=delta_nu.value).to(units.uK).value)
         ps21.append(preion_model.get_cl21(z21, ells, Dells=True, delta_nu=delta_nu).to(units.uK**2).value)
-        tau_ps.append(np.sum(preion_model.get_tau(ells=ells, signal='both', Dells=True), axis=1))
+    tau_ps = np.sum(preion_model.get_tau(ells=ells, signal='both', Dells=True), axis=1)
 
-    return np.array(model), np.array(tau_ps), np.array(ps21)
+    return np.array(model), tau_ps, np.array(ps21)
 
 
 def lnprob(theta):
