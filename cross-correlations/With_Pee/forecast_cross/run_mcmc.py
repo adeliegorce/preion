@@ -19,14 +19,18 @@ cos = cosmology.Planck18
 
 randomness = False
 overwrite = True
-use_ksz_emulator = 'RF'
+use_ksz_emulator = False
+
+zend_prior = 4.5
 
 tel_tau = sys.argv[1]  # 'CMB-S4-LAT'
 label21 = sys.argv[2]  # 'hera_moderate'
 delta_nu = float(sys.argv[3])*units.MHz
-zs = np.atleast_1d(sys.argv[4].split(','), dtype=float)  # e.g., '7.0,8.0'
+zs = np.atleast_1d(np.array(sys.argv[4].split(','), dtype=float))  # e.g., '7.0,8.0'
 label = f'taux21_{tel_tau}_{label21}'
-
+if zend_prior is not None:
+    label += '_zendprior'
+print(label)
 
 niterations = 25000
 nwalkers = 8
@@ -94,6 +98,9 @@ def lnprior(theta, priors=priors):
         low, high = p
         if not (low <= theta[i] <= high):
             return -np.inf
+    if zend_prior is not None:
+        if theta[0] - theta[1] < zend_prior:
+            return -np.inf
     return 0.
 
 
@@ -111,12 +118,16 @@ dtype = [("Dl_tau21", float, (np.size(zs), np.size(ells),)),
          ("Dl_tautau", float, (np.size(ells),)),
          ("Dl_21", float, (np.size(zs), np.size(ells),)),]
 
-p0 = [np.random.uniform(low, high, size=nwalkers) for low, high in priors]
-p0 = np.vstack(p0).T
-print('Likelihood at initial positions:', end=' ')
-for pset in p0:
-    print(f'{lnprob(pset)[0]:.2f}', end=', ')
-print('')
+lp0 = np.inf
+ip0 = 0
+while np.isinf(lp0).any():
+    p0 = [np.random.uniform(low, high, size=nwalkers) for low, high in priors]
+    p0 = np.vstack(p0).T
+    lp0 = [lnprob(pset)[0] for pset in p0]
+    ip0 += 1
+    if ip0 == 1000:
+        raise ValueError('Cannot find initial positions compatible with the priors.')
+print(f'Likelihood at initial positions: {lp0}.')
 
 with mp.Pool(ncores) as pool:
     sampler = emcee.EnsembleSampler(
