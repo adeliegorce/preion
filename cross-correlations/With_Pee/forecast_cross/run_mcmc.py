@@ -10,18 +10,20 @@ import time
 import emcee
 import multiprocessing as mp
 import os
+import copy
 
-from forecast_utils import make_datapoints
+from forecast_utils import make_datapoints, get_lbins, gaussian_prior, flat_prior, lower_limit
 from parameters import telescope_specs
 from theory import Pee_model
 
 cos = cosmology.Planck18
 
 randomness = False
-overwrite = True
-use_ksz_emulator = False
+overwrite = False
+use_ksz_emulator = 'RF'
 
 zend_prior = 4.5
+tau_prior = [0.055, 0.007]  # effectively use the tau from true model
 
 tel_tau = sys.argv[1]  # 'CMB-S4-LAT'
 label21 = sys.argv[2]  # 'hera_moderate'
@@ -30,9 +32,11 @@ zs = np.atleast_1d(np.array(sys.argv[4].split(','), dtype=float))  # e.g., '7.0,
 label = f'taux21_{tel_tau}_{label21}'
 if zend_prior is not None:
     label += '_zendprior'
+if tau_prior is not None:
+    label += '_tauprior'
 print(label)
 
-niterations = 25000
+niterations = 50000
 nwalkers = 8
 ncores = mp.cpu_count()
 print(f'\nRunning on {ncores} CPUs with {nwalkers} walkers for {niterations} iterations.')
@@ -58,6 +62,8 @@ preion_model = Pee_model(
     verbose=False, run_camb=True,
     use_ksz_emulator=use_ksz_emulator)
 preion_model.run_camb = False
+if tau_prior is not None:
+    tau_prior[0] = copy.copy(preion_model.tau)
 
 
 def get_model(theta, ells=ells):
@@ -74,34 +80,26 @@ def get_model(theta, ells=ells):
         model.append(preion_model.get_tau_21_cross(z21, ells, Dells=True, delta_nu=delta_nu.value).to(units.uK).value)
         ps21.append(preion_model.get_cl21(z21, ells, Dells=True, delta_nu=delta_nu).to(units.uK**2).value)
     tau_ps = np.sum(preion_model.get_tau(ells=ells, signal='both', Dells=True), axis=1)
+    DkSZ = preion_model.get_ksz(ells=[3000], signal='both', Dells=True)
 
-    return np.array(model), tau_ps, np.array(ps21)
+    return np.array(model), tau_ps, np.array(ps21), preion_model.tau, DkSZ
 
 
 def lnprob(theta):
-    lp = lnprior(theta)
+    lp = flat_prior(theta, priors)
+    lp += lower_limit(theta[0] - theta[1], zend_prior)
     if not np.isfinite(lp):
-        return -np.inf, 0., 0., 0.
-    ln, model, tau_ps, ps21 = lnlike(theta)
-    return lp + ln, model, tau_ps, ps21
+        return -np.inf, 0., 0., 0., 0., 0.
+    ln, model, tau_ps, ps21, tau, DkSZ = lnlike(theta)
+    lp += gaussian_prior(tau, tau_prior)
+    return lp + ln, model, tau_ps, ps21, tau, DkSZ
 
 
 def lnlike(theta):
-    model, tau_ps, ps21 = get_model(theta)
+    model, tau_ps, ps21, tau, DkSZ = get_model(theta)
     m_inf = ~np.isinf(tau21_err)
     like = (model[m_inf] - tau21_data[m_inf])**2 / tau21_err[m_inf]**2
-    return -0.5 * like.sum(), model, tau_ps, ps21
-
-
-def lnprior(theta, priors=priors):
-    for i, p in enumerate(priors):
-        low, high = p
-        if not (low <= theta[i] <= high):
-            return -np.inf
-    if zend_prior is not None:
-        if theta[0] - theta[1] < zend_prior:
-            return -np.inf
-    return 0.
+    return -0.5 * like.sum(), model, tau_ps, ps21, tau, DkSZ
 
 
 t0 = time.time()
@@ -116,7 +114,10 @@ if overwrite:
     backend.reset(nwalkers, ndim)
 dtype = [("Dl_tau21", float, (np.size(zs), np.size(ells),)),
          ("Dl_tautau", float, (np.size(ells),)),
-         ("Dl_21", float, (np.size(zs), np.size(ells),)),]
+         ("Dl_21", float, (np.size(zs), np.size(ells),)),
+         ("taus", float, (1,)),
+         ("DkSZ", float, (2,)),
+         ]
 
 lp0 = np.inf
 ip0 = 0
