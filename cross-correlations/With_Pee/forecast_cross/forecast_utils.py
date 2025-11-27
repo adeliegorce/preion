@@ -5,6 +5,7 @@ import numpy as np
 from astropy import cosmology, units, constants
 from scipy.interpolate import RegularGridInterpolator, interp1d
 import warnings
+import emcee
 
 from theory import Pee_model
 from utils_tau import tau_noise
@@ -13,6 +14,41 @@ from parameters import telescope_specs, nu21_ref
 
 theta_labels = [r'$z_\mathrm{re}$', r'd$z$', r'log$\alpha_0$', r'$\kappa$']
 prior_bounds = [(5.5, 10.), (0., 4.), (0, 6.), (0, 0.4)]
+
+
+def check_samples(key, filelist):
+    has_samples = []
+    for filename in filelist:
+        try:
+            _ = emcee.backends.HDFBackend(filename, read_only=True).get_blobs(flat=True)[key]
+            has_samples.append(True)
+        except ValueError:
+            has_samples.append(False)
+    print(f'Samples have {key}? {np.all(has_samples)}')
+    return np.all(has_samples)
+
+
+def flat_prior(theta, priors):
+    for i, p in enumerate(priors):
+        low, high = p
+        if not (low <= theta[i] <= high):
+            return -np.inf
+    return 0.
+
+
+def gaussian_prior(param, gaus_params):
+    if gaus_params is None:
+        return 0.
+    [mu, sigma] = gaus_params
+    return -0.5 * ((param - mu) ** 2) / (sigma ** 2)
+
+
+def lower_limit(param, lolim):
+    if lolim is None:
+        return 0.
+    elif param < lolim:
+        return -np.inf
+    return 0.
 
 
 def get_sensitivity(label, zs=[5.5, 6., 6.5, 7., 8., 9., 10., 11., 12., 14.], error_type='thermal', debug=False):
@@ -126,15 +162,48 @@ def get_cl21_noise(noise_function, z21, ells, Dells=True, delta_nu=0., nz=100, f
         return ells * (ells + 1.) * C_ells / 2. / np.pi * units.mK**2
 
 
+def get_lbins(tel_tau, lbin_edges=None):
+
+    assert tel_tau in telescope_specs.keys()
+    lmin, lmax = telescope_specs[tel_tau]['lmin'], telescope_specs[tel_tau]['lmax']
+    dell = telescope_specs[tel_tau]['Delta_ell']
+    if lbin_edges is None:
+        if tel_tau.find('SAT') >= 0:
+            lbin_edges = np.r_[lmin, np.arange(dell, lmax+dell, step=dell)]
+        else:
+            lbin_edges = np.arange(lmin, lmax+dell, step=dell)
+            if lbin_edges[-1] > lmax:
+                lbin_edges[-1] = lmax
+        dells = np.ones(lbin_edges.size - 1) * dell
+    else:
+        lbin_edges = np.sort(lbin_edges)
+        dells = np.diff(lbin_edges)
+        if np.min(lbin_edges) < lmin:
+            warnings.warn(f'Min l below {tel_tau} limit, replacing value.')
+            lbin_edges[0] = lmin
+        if np.max(lbin_edges) > lmax:
+            warnings.warn(f'Max l above {tel_tau} limit, replacing value.')
+            lbin_edges[-1] = lmax
+        if not np.allclose(dells, dells):
+            warnings.warn(f'Delta l diff from {tel_tau} spec ({dells} vs. {dell}).')
+    ells = 0.5 * (lbin_edges[1:] + lbin_edges[:-1])
+    return ells, lbin_edges, dells
+
+
 def make_datapoints(
         theta, tel_tau, label21='ska_aast_optimistic',
         delta_nu=100.*units.MHz, zs=[7.],
-        use_ksz_emulator=False, randomness=False, ells=None,
+        use_ksz_emulator=False, randomness=False, lbin_edges=None,
         cos=cosmology.Planck18, save=None, verbose=True):
 
     if verbose:
         print(f'Computing sensitivity for {tel_tau} x {label21}, '
               f'with a {delta_nu:.1f} bandwidth.')
+
+    # tau
+    ells, lbin_edges, dells = get_lbins(tel_tau, lbin_edges=lbin_edges)
+    llin = np.arange(lbin_edges[0], lbin_edges[-1]+1)
+    # indlin = np.digitize(llin, lbin_edges)
 
     preion_model = Pee_model(
         zre_h=theta[0], dz_h=theta[1],
@@ -143,35 +212,14 @@ def make_datapoints(
         verbose=False, run_camb=True,
         use_ksz_emulator=use_ksz_emulator)
 
-    # tau
-    assert tel_tau in telescope_specs.keys()
-    lmin, lmax = telescope_specs[tel_tau]['lmin'], telescope_specs[tel_tau]['lmax']
-    dell = telescope_specs[tel_tau]['Delta_ell']
-    if ells is None:
-        if tel_tau.find('SAT') >= 0:
-            ells = np.r_[lmin, np.arange(dell, lmax+dell, step=dell)]
-        else:
-            ells = np.arange(lmin, lmax+dell, step=dell)
-            if ells[-1] > lmax:
-                ells[-1] = lmax
-    else:
-        ells = np.atleast_1d(ells)
-        if np.min(ells) < lmin:
-            warnings.warn(f'Min l below {tel_tau} limit.')
-        if np.max(ells) > lmax:
-            warnings.warn(f'Max l above {tel_tau} limit.')
-        if np.diff(ells)[-1] != dell:
-            warnings.warn(f'Delta l diff from {tel_tau} spec ({np.diff(ells)[-1]} vs. {dell}).')
-            dell = np.diff(ells)[-1]
-
     datafile = f'../data/dltau_{tel_tau}.txt'
     if os.path.exists(datafile):
-        ells2, Dl_tautau2, Nl_tautau2 = np.loadtxt(datafile, unpack=True)
+        ells2, Dl_tautau, Nl_tautau = np.loadtxt(datafile, unpack=True)
         if not np.array_equal(ells2, ells):
             print(f'Warning: {datafile} does not match the current ells, inter(extra)polating...')
-            m_inf = ~np.isinf(Nl_tautau2)
-            Dl_tautau = interp1d(ells2[m_inf], Dl_tautau2[m_inf], bounds_error=False, fill_value='extrapolate')(ells)
-            Nl_tautau = interp1d(ells2[m_inf], Nl_tautau2[m_inf], bounds_error=False, fill_value='extrapolate')(ells)
+            m_inf = ~np.isinf(Nl_tautau)
+            Dl_tautau = interp1d(ells2[m_inf], Dl_tautau[m_inf], bounds_error=False, fill_value='extrapolate')(ells)
+            Nl_tautau = interp1d(ells2[m_inf], Nl_tautau[m_inf], bounds_error=False, fill_value='extrapolate')(ells)
         print(f'Loaded data from {datafile}')
     else:
         print(f'No data file found at {datafile}, computing...')
@@ -209,14 +257,23 @@ def make_datapoints(
         if np.isinf(Nl_21).any():
             print(f'Warning: 21cm noise values at l={ells[np.isinf(Nl_21)]} are infinite.')
         Dl_tau21[iz] = preion_model.get_tau_21_cross(z21, ells, Dells=True, delta_nu=delta_nu.value).to(units.uK).value
-        Dltau21_err[iz] = 1. / (2.*ells+1) / fsky / dell * (
+        # average over values inside multipole bin
+        # siglin = preion_model.get_tau_21_cross(z21, llin, Dells=True, delta_nu=delta_nu.value).to(units.uK).value
+        # Dl_tau21[iz] = np.array([np.mean(siglin[indlin == i+1]) for i in range(len(lbin_edges)-1)])
+        Dltau21_err[iz] = 1. / (2.*ells+1) / fsky / dells * (
                 Dl_tau21[iz]**2 + ((Dl_21 + Nl_21) * (Dl_tautau + Nl_tautau))
             )
         if verbose:
-            print(f'z = {z21:.1f}, cumulative SNR = {np.sqrt(Dl_tau21[iz]**2 / Dltau21_err[iz]).sum():.2f}')
+            cumu_snr2 = (Dl_tau21[iz]**2/Dltau21_err[iz]).sum()
+            # cumu_snr = Dl_tau21[iz].mean() / np.sqrt(Dltau21_err[iz]).mean() * np.sqrt(ells.size)
+            print(f'z = {z21:.1f}, cumulative SNR = {np.sqrt(cumu_snr2):.2f}')
 
-    if (save is not None) and (len(glob.glob(f'data/taux21_{tel_tau}_{label21}_z*_datapoints.txt'))==0):
+    if (save is not None):# and (len(glob.glob(f'data/taux21_{tel_tau}_{label21}_z*_datapoints.txt'))==0):
         for iz, z21 in enumerate(zs):
-            np.savetxt(f'data/taux21_{tel_tau}_{label21}_z{z21:.1f}_datapoints.txt', np.c_[ells, Dl_tau21[iz], Dltau21_err[iz]], header='ell, Dl [uK], err [uK]')
+            np.savetxt(
+                f'data/taux21_{tel_tau}_{label21}_z{z21:.1f}_datapoints.txt',
+                np.c_[ells, Dl_tau21[iz], np.sqrt(Dltau21_err[iz])],
+                header='ell, Dl [uK], err [uK]'
+            )
 
-    return ells, Dl_tau21, Dltau21_err
+    return ells, Dl_tau21, np.sqrt(Dltau21_err)

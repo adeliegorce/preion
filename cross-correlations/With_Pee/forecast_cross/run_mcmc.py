@@ -19,7 +19,7 @@ from theory import Pee_model
 cos = cosmology.Planck18
 
 randomness = False
-overwrite = False
+overwrite = True
 use_ksz_emulator = 'RF'
 
 zend_prior = 4.5
@@ -34,7 +34,7 @@ if zend_prior is not None:
     label += '_zendprior'
 if tau_prior is not None:
     label += '_tauprior'
-print(label)
+print(f'\n{label}')
 
 niterations = 50000
 nwalkers = 8
