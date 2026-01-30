@@ -364,7 +364,7 @@ def noise(ls, telescope, pol=False, is_cl=False):
     ls = np.atleast_1d(ls)
     sig0 = telescope['noise'] / 60.0 * np.pi / 180.0 # arcmin to rad
     fwhm = telescope['fwhm'] / 60.0 * np.pi / 180.0 # arcmin to rad
-    nl = sig0**2 / 2. * np.exp(ls*(ls+1.)*fwhm**2/8./np.log(2.))
+    nl = sig0**2 * np.exp(ls*(ls+1.)*fwhm**2/8./np.log(2.))
     if pol:
         nl *= 2.
     if not is_cl:
