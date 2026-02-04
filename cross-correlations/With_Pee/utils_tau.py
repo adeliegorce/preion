@@ -24,7 +24,7 @@ def tau_noise(telescope, cls, is_cl=False, key='f_eb', overwrite=True, folder='/
     # telescope specs
     tel = telescope_specs[telescope]
     nlev_t = tel['noise']  # Temperature noise level in muK.arcmin
-    nlev_p = nlev_t*np.sqrt(2.)  # Polarisation noeise level in muK.arcmin
+    nlev_p = nlev_t*np.sqrt(2.)  # Polarisation noise level in muK.arcmin
     beam_fwhm_amin = tel['fwhm']  # Full width at half maximum of the gaussian beam of our instrument, in arcmin
     lmin_ivf = int(tel['lmin'])
     if tel['lmax'] + 1 > CMB_Cells.shape[0]:
@@ -100,12 +100,12 @@ def tau_noise(telescope, cls, is_cl=False, key='f_eb', overwrite=True, folder='/
             cls_ivf[k1+k2] *= ftl[k1] * ftl[k2]
 
     if overwrite:
-        tempfiles = glob.glob(f'{folder}/tau_snr/qresp_tau_{key}/*')
+        tempfiles = glob.glob(opj(folder, f'qresp_tau_{key}/*'))
         for file in tempfiles:
             os.remove(file)
     # The function below performs the quadratic estimation.
     qresp_dd = qresp.resp_lib_simple(
-        os.path.join(opj('./', 'tau_snr'), f'qresp_tau_{key}'),
+        os.path.join(folder, f'qresp_tau_{key}'),
         lmax_ivf, cls_weight, scattered_cls_from_maps,
         ftl, lmax_ivf
     )
