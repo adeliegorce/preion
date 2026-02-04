@@ -33,8 +33,8 @@ telescope_specs = {
                'color': (0.4, 0.7607843137254902, 0.6470588235294118, 1.0)},
     'SPT-3G-Wide': {'fsky':0.15, 'fwhm':1.2, 'noise':9.6, 'lmin': 500, 'lmax':10000, 'Delta_ell':500,
                'color': (0.4, 0.7607843137254902, 0.6470588235294118, 1.0)},
-    'AdvACT': {'fsky':0.25, 'fwhm':1.5, 'noise':13.2, 'lmin': 2000, 'lmax':8000, 'Delta_ell':500,
-               'color': (0.4, 0.7607843137254902, 0.6470588235294118, 1.0), 'ref':'DR6'},
+    'AdvACT': {'fsky':0.25, 'fwhm':1.5, 'noise':13.2, 'lmin': 800, 'lmax':8500, 'Delta_ell':500,
+               'color': 'C0', 'ref':'DR6'},
     'SO': {'color': (0.9882352941176471, 0.5529411764705883, 0.3843137254901961, 1.0)},
     # lmax=8000 optimistic, in forecast paper they take lmax=3000
     'SO-LAT': {'fsky':0.4, 'fwhm':1.5, 'noise':6.4, 'lmin': 1000., 'lmax': 8000.,  'Delta_ell':500,
