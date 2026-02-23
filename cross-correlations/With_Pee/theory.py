@@ -1141,7 +1141,7 @@ class Pee_model:
             zmax_mask = zmax
             if zmin is None:
                 zmin_mask = zlin.min()
-        g = (zlin <= zmax_mask) & (zlin > zmin_mask)
+        g = (zlin < zmax_mask) & (zlin >= zmin_mask)
         # if signal == "late-time":
         #     g = zlin < self.zend_h
         # elif signal == "both":
@@ -1356,25 +1356,25 @@ class Pee_model:
             Tuple of (patchy, late-time) B-mode power at ell, in uK2.
         """
 
-        ells = np.array(ells)
-        CBB_screen_temp = np.zeros(ells.size)
+        ells = np.array(ells, dtype=int)
+
+        ltemp = np.arange(1, max(2500, ells.max()), step=10)
+        CBB_screen_temp = np.zeros(ltemp.size)
 
         # primary EE modes
-        Cell_EE_p = self.get_primary_spectra(ells=ells, Dells=False, unit='muK')[:, 2]
+        Cell_EE_p = self.get_primary_spectra(ells=ltemp, Dells=False, unit='muK')[:, 2]
         # tau tau ps (patchy+late-time)
-        Cell_tt = np.sum(self.get_tau(ells=ells, signal='both', Dells=False), axis=1)
+        Cell_tt = np.sum(self.get_tau(ells=ltemp, signal='both', Dells=False), axis=1)
 
         # ells < 300
-        m = ells < 300
-        CBB_screen_lowl = np.sum(Cell_EE_p*Cell_tt*(2.*ells+1.)/4./np.pi)
+        m = ltemp < 300
+        CBB_screen_lowl = np.sum(Cell_EE_p*Cell_tt*(2.*ltemp+1.)/4./np.pi)
         CBB_screen_temp[m] = CBB_screen_lowl * np.ones(np.sum(m)) * 0.5 * np.exp(-2. * self.tau)
         # ells > 2000
-        m2 = ells > 2000
-        # Erms2 = np.sum(self.get_primary_spectra(ells=np.arange(5000), Dells=False, unit='muK')[:, 2]*(2.*np.arange(5000)+1.)/4./np.pi)
+        m2 = ltemp > 2000
         CBB_screen_temp[m2] = 0.5 * self.Erms()**2 * Cell_tt[m2] * np.exp(-2.*self.tau)
         # 300 <= ell <= 2000
-        CBB_screen = interp1d(ells[m | m2], CBB_screen_temp[m | m2], fill_value='extrapolate', bounds_error=False)(ells)
-
+        CBB_screen = interp1d(ltemp[m | m2], CBB_screen_temp[m | m2], fill_value='extrapolate', bounds_error=False)(ells)
         if not Dells:
             return CBB_screen
         else:
