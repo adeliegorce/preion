@@ -657,7 +657,10 @@ class Pee_model:
             print(" Computing CMB power spectra...")
         powers = results.get_cmb_power_spectra(
             pars, CMB_unit=unit, lmax=lmax, raw_cl=not Dells)
-        CL = powers[type]
+        try:
+            CL = powers[type]
+        except KeyError:
+            raise ValueError("Type '%s' not in CAMB output" % type)
         ls = np.arange(CL.shape[0])
         CMB_Cells = np.c_[ls, CL[:, 0], CL[:, 1], CL[:, 3]]  # tt, ee, te
         if ells is None or np.size(ells) == 1:
