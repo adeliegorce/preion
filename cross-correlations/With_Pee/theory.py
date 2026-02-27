@@ -1361,7 +1361,7 @@ class Pee_model:
 
         ells = np.array(ells, dtype=int)
 
-        ltemp = np.arange(1, max(2500, ells.max()), step=10)
+        ltemp = np.arange(1, max(2500, ells.max()), step=1)
         CBB_screen_temp = np.zeros(ltemp.size)
 
         # primary EE modes
