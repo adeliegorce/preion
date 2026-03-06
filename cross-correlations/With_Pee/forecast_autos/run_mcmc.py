@@ -13,15 +13,14 @@ import os
 
 from forecast_utils import make_datapoints
 from parameters import telescope_specs
+from utils import get_lbins
 from theory import Pee_model
 
 cos = cosmology.Planck18
-# ells = [np.linspace(10, 1000, 50), np.arange(1000, 8000, step=500), np.linspace(10, 1000, 50)]
-telescopes = ['CMB-HD', 'CMB-HD', 'CMB-HD']
-ells = []
-for tel in telescopes:
-    ells.append(np.arange(telescope_specs[tel]['lmin'], telescope_specs[tel]['lmax'], step=telescope_specs[tel]['Delta_ell']))
-label = 'CMB-HD-full_RF'
+telescopes = ['CMB-S4-LAT', 'CMB-S4-LAT', 'CMB-S4-LAT']
+lbin_edges = None
+
+label = 'CMB-S4-LAT_tau_only'
 randomness = False
 overwrite = True
 use_ksz_emulator = 'RF'
@@ -38,11 +37,11 @@ plot = True
 
 # mock data
 tau_data, ksz_data, bb_data, cov_tau, cov_ksz, cov_bb = make_datapoints(
-    theta_true,
-    ells=ells,
-    telescopes=telescopes, randomness=randomness,
+    theta_true, telescopes=telescopes, lbin_edges=lbin_edges,
+    randomness=randomness,
     cos=cos, save=label, use_ksz_emulator=use_ksz_emulator,
 )
+ells = np.array([get_lbins(tel, lbin_edges=lbin_edges)[0] for tel in telescopes])
 
 preion_model = Pee_model(
     h=cos.h, Ob_0=cos.Ob0, Om_0=cos.Om0,
@@ -77,9 +76,10 @@ def lnprob(theta):
 def lnlike(theta):
     tau_ps, ksz_ps, bb_ps = get_model(theta)
     tau_like = (tau_ps - tau_data).T.dot(np.linalg.inv(cov_tau)).dot(tau_ps - tau_data)
-    ksz_like = (ksz_ps - ksz_data).T.dot(np.linalg.inv(cov_ksz)).dot(ksz_ps - ksz_data)
-    bb_like = (bb_ps - bb_data).T.dot(np.linalg.inv(cov_bb)).dot(bb_ps - bb_data)
-    return -0.5 * (ksz_like+tau_like+bb_like), tau_ps, ksz_ps, bb_ps
+    return -0.5 * tau_like, tau_ps, ksz_ps, bb_ps
+    # ksz_like = (ksz_ps - ksz_data).T.dot(np.linalg.inv(cov_ksz)).dot(ksz_ps - ksz_data)
+    # bb_like = (bb_ps - bb_data).T.dot(np.linalg.inv(cov_bb)).dot(bb_ps - bb_data)
+    # return -0.5 * (ksz_like+tau_like+bb_like), tau_ps, ksz_ps, bb_ps
 
 
 def lnprior(theta, priors=priors):

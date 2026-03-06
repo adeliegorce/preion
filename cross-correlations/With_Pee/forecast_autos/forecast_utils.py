@@ -6,8 +6,8 @@ from copy import copy
 from scipy.interpolate import interp1d
 
 from theory import Pee_model
-from utils import sample_var, noise
-from utils_tau import tau_noise
+from utils import sample_var, noise, get_lbins
+from utils_tau import tau_noise, get_cls_for_tau_noise
 
 from parameters import telescope_specs
 
@@ -129,25 +129,22 @@ def dtau_dz(theta, idz, dev=0.05, cos=cosmology.Planck18):
 
 
 def make_datapoints(
-        theta, ells, telescopes,
+        theta, telescopes, lbin_edges=None,
         use_ksz_emulator=False, randomness=False,
         cos=cosmology.Planck18, save=None):
 
-    assert len(ells) == 3
     assert np.size(theta) >= 4
     if telescopes is not None:
         tel_tau, tel_ksz, tel_bb = telescopes
+        ells = []
+        dells = []
         for i, tel in enumerate(telescopes):
             assert tel in telescope_specs.keys()
-            if (np.min(ells[i]) < telescope_specs[tel]['lmin']):
-                warnings.warn(f'Min l below {tel} limit.')
-            if (np.max(ells[i]) > telescope_specs[tel]['lmax']):
-                warnings.warn(f'Max l above {tel} limit.')
-            if np.diff(ells[i])[-1] != telescope_specs[tel]['Delta_ell']:
-                warnings.warn(f'Delta l diff from {tel} spec ({np.diff(ells[i])[-1]} vs. {telescope_specs[tel]["Delta_ell"]}).')
-            ells[i] = np.array(ells[i])
-            ells[i] = ells[i][np.logical_and(ells[i] >= telescope_specs[tel]['lmin'], ells[i] <= telescope_specs[tel]['lmax'])]
+            ls, _, dls = get_lbins(tel, lbin_edges=lbin_edges[i] if lbin_edges is not None else None)
+            ells.append(ls)
+            dells.append(dls)
     ells_tau, ells_ksz, ells_bb = ells
+    dells_tau, dells_ksz, dells_bb = dells
 
     preion_model = Pee_model(
         zre_h=theta[0], dz_h=theta[1],
@@ -163,25 +160,21 @@ def make_datapoints(
 
         ksz_obs = ksz_ps+noise(ells_ksz, telescope_specs[tel_ksz], pol=False, is_cl=False)
         cov_ksz = np.diag(
-            1./(2. * ells_ksz+1.) / telescope_specs[tel_ksz]['fsky'] * 2. * ksz_obs**2            
-            / telescope_specs[tel_ksz]['Delta_ell']
+            1./(2. * ells_ksz+1.) / telescope_specs[tel_ksz]['fsky'] * 2. * ksz_obs**2
+            / dells_ksz
         )
         if use_ksz_emulator == 'RF':
             print(f'Adding emulator reconstruction errors for {use_ksz_emulator}')
             cov_ksz += np.diag(np.ones_like(ells_ksz) * 0.01**2) # emulator error (~ constant with multipole)
         cov_bb = np.diag(
             1./(2. * ells_bb+1.) / telescope_specs[tel_bb]['fsky'] * 2. * (total_bb+noise(ells_bb, telescope_specs[tel_bb], pol=True, is_cl=False))**2            
-            / telescope_specs[tel_bb]['Delta_ell']
+            / dells_bb
         )
-
-        ls_temp = np.arange(int(telescope_specs[tel_tau]['lmax'])+1)
-        CMB_Cells = preion_model.get_primary_spectra(ells=ls_temp, Dells=False)
-        CMB_Cells = CMB_Cells[:, [0, 1, 2, 4, 3]]
-        tau_temp = np.r_[0., np.sum(preion_model.get_tau(ells=ls_temp[1:], signal='both', Dells=False), axis=1)]
-        tau_noise_res = tau_noise(tel_tau, np.c_[CMB_Cells, tau_temp], is_cl=False, folder='./')
+        primary_cls2, lensed_cls2, tau_cls2 = get_cls_for_tau_noise(preion_model)
+        tau_noise_res = tau_noise(tel_tau, primary_cls2, lensed_cls2, tau_cls2, is_cl=False)
         cov_tau = np.diag(
-            1./(2. * ells_tau+1.) / telescope_specs[tel_tau]['fsky'] * 2. * (tau_ps+interp1d(ls_temp, tau_noise_res)(ells_tau))**2
-            /  telescope_specs[tel_tau]['Delta_ell']
+            1./(2. * ells_tau+1.) / telescope_specs[tel_tau]['fsky'] * 2. * (tau_ps+interp1d(np.arange(tau_noise_res.size), tau_noise_res)(ells_tau))**2
+            / dells_tau
         )
 
     else:
@@ -201,7 +194,7 @@ def make_datapoints(
         np.savetxt(f'data/{str(save)}_cov_ksz.txt', cov_ksz)
         np.savetxt(f'data/{str(save)}_cov_tau.txt', cov_tau)
         np.savetxt(f'data/{str(save)}_cov_bb.txt', cov_bb)
-    
+
     return tau_ps, ksz_ps, total_bb, cov_tau, cov_ksz, cov_bb
 
 
