@@ -1340,7 +1340,7 @@ class Pee_model:
         else:
             return self.Cl_to_Dl(ells, C_ells) / (self.T_cmb * 1e6) ** 2
 
-    def get_screening_B_modes(self, ells, Dells=True):
+    def get_screening_B_modes(self, ells, Dells=True, log_interp=True):
         """
         Compute angular power spectrum of scattering B-modes for given model at ell.
         Valid at l <~ 300 only.
@@ -1353,7 +1353,10 @@ class Pee_model:
             Dells: boolean
                 If True, give the results in terms of
                 D(l) = l(l+1)Cl/2/pi.
-                Default is False.
+                Default is False.\\
+            log_interp: boolean
+                Whether to interpolate log(C_ell) or C_ell.
+                Default is True.
         Outputs
         ------
             Tuple of (patchy, late-time) B-mode power at ell, in uK2.
@@ -1377,7 +1380,10 @@ class Pee_model:
         m2 = ltemp > 2000
         CBB_screen_temp[m2] = 0.5 * self.Erms()**2 * Cell_tt[m2] * np.exp(-2.*self.tau)
         # 300 <= ell <= 2000
-        CBB_screen = interp1d(ltemp[m | m2], CBB_screen_temp[m | m2], fill_value='extrapolate', bounds_error=False)(ells)
+        if log_interp:
+            CBB_screen = np.power(10, interp1d(ltemp[m | m2], np.log10(CBB_screen_temp[m | m2]), fill_value='extrapolate', bounds_error=False)(ells))
+        else:
+            CBB_screen = interp1d(ltemp[m | m2], CBB_screen_temp[m | m2], fill_value='extrapolate', bounds_error=False)(ells)
         if not Dells:
             return CBB_screen
         else:
