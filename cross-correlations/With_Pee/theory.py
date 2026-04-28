@@ -1353,7 +1353,7 @@ class Pee_model:
             Dells: boolean
                 If True, give the results in terms of
                 D(l) = l(l+1)Cl/2/pi.
-                Default is False.\\
+                Default is False.
             log_interp: boolean
                 Whether to interpolate log(C_ell) or C_ell.
                 Default is True.
@@ -1368,7 +1368,7 @@ class Pee_model:
         CBB_screen_temp = np.zeros(ltemp.size)
 
         # primary EE modes
-        Cell_EE_p = self.get_primary_spectra(ells=ltemp, Dells=False, unit='muK')[:, 2]
+        Cell_EE_p = self.get_primary_spectra(ells=ltemp, Dells=False, unit='muK', type='unlensed_scalar')[:, 2]
         # tau tau ps (patchy+late-time)
         Cell_tt = np.sum(self.get_tau(ells=ltemp, signal='both', Dells=False), axis=1)
 
@@ -1381,7 +1381,7 @@ class Pee_model:
         CBB_screen_temp[m2] = 0.5 * self.Erms()**2 * Cell_tt[m2] * np.exp(-2.*self.tau)
         # 300 <= ell <= 2000
         if log_interp:
-            CBB_screen = np.power(10, interp1d(ltemp[m | m2], np.log10(CBB_screen_temp[m | m2]), fill_value='extrapolate', bounds_error=False)(ells))
+            CBB_screen = np.power(10., interp1d(ltemp[m | m2], np.log10(CBB_screen_temp[m | m2]), fill_value='extrapolate', bounds_error=False)(ells))
         else:
             CBB_screen = interp1d(ltemp[m | m2], CBB_screen_temp[m | m2], fill_value='extrapolate', bounds_error=False)(ells)
         if not Dells:
@@ -1390,7 +1390,9 @@ class Pee_model:
             return CBB_screen * ells * (ells + 1.) / 2. / np.pi
 
     def Erms(self):
-        return np.sqrt(np.sum(self.get_primary_spectra(ells=np.arange(5000), Dells=False, unit='muK')[:, 2]*(2.*np.arange(5000)+1.)/4./np.pi))
+        ltemp = np.arange(5000)
+        Cell_EE_p = self.get_primary_spectra(ells=ltemp, Dells=False, unit='muK', type='unlensed_scalar')[:, 2]
+        return np.sqrt(np.sum(Cell_EE_p*(2.*ltemp+1.)/4./np.pi))
 
     def T0(self, z):
 
