@@ -1,4 +1,5 @@
 import argparse
+import logging
 import os
 
 import arviz as az
@@ -6,9 +7,11 @@ import emcee
 import numpy as np
 
 from ..plotting import corner as _corner_plot
-from .config import load_config, run_label
+from .config import load_config, run_label, setup_logging
 
 PARAM_NAMES = ["zre", "dz", "alpha0", "kappa"]
+
+logger = logging.getLogger(__name__)
 
 
 def _theta_labels(cfg):
@@ -57,7 +60,7 @@ def convergence_diagnostics(sampler):
     samples = sampler.get_chain(flat=False)
     taus = sampler.get_autocorr_time(tol=0)
     if np.isnan(taus).any():
-        print("NaN autocorrelation time. Taking max of the finite values.")
+        logger.info("NaN autocorrelation time. Taking max of the finite values.")
     endtau = np.nanmax(taus)
     converged = bool(np.all(taus * 60 < sampler.iteration))
     burnin = int(max(0.1 * samples.shape[0], 2. * endtau))
@@ -146,16 +149,16 @@ def summarize(flatsamples, truths, paramnames):
     """Print & return mean/std/bias/percent-error per parameter, as in
     read_mcmc.ipynb."""
     summary = {}
-    print('ML parameters:')
+    logger.info('ML parameters:')
     for j, name in enumerate(paramnames):
         mean, std = np.mean(flatsamples[:, j]), np.std(flatsamples[:, j])
-        print(f' {name} = {mean:.2f} +/- {std:.3f} vs {truths[j]:.2f}')
+        logger.info(f' {name} = {mean:.2f} +/- {std:.3f} vs {truths[j]:.2f}')
         summary[name] = {"mean": mean, "std": std, "truth": truths[j]}
-    print('Biases:')
+    logger.info('Biases:')
     for j, name in enumerate(paramnames):
         bias_sigma = (summary[name]["mean"] - truths[j]) / summary[name]["std"]
         pct_error = summary[name]["std"] / truths[j] * 100. if truths[j] != 0 else np.nan
-        print(f' {name} measured with {bias_sigma:.2f}sig bias and {pct_error:.2f}% error')
+        logger.info(f' {name} measured with {bias_sigma:.2f}sig bias and {pct_error:.2f}% error')
         summary[name]["bias_sigma"] = bias_sigma
         summary[name]["percent_error"] = pct_error
     return summary
@@ -174,14 +177,15 @@ def main(argv=None):
     cfg = load_config(args.config)
     if args.data is not None:
         cfg["data"] = args.data
+    setup_logging(cfg)
 
     ells, data, cov = load_mock_data(cfg)
     sampler = load_chain(cfg)
     diagnostics = convergence_diagnostics(sampler)
-    print(f"Auto-correlation time: {diagnostics['endtau']:.2f}. Converged: {diagnostics['converged']}.")
-    print(f"burnin = {diagnostics['burnin']} ({diagnostics['burnin']/sampler.iteration:.1%})")
-    print("Gelman-Rubin R-hat:")
-    print(diagnostics["rhat"])
+    logger.info(f"Auto-correlation time: {diagnostics['endtau']:.2f}. Converged: {diagnostics['converged']}.")
+    logger.info(f"burnin = {diagnostics['burnin']} ({diagnostics['burnin']/sampler.iteration:.1%})")
+    logger.info("Gelman-Rubin R-hat:")
+    logger.info(diagnostics["rhat"])
 
     flatsamples, _ = get_flat_samples(sampler, diagnostics["burnin"])
     truths = _theta_true(cfg)

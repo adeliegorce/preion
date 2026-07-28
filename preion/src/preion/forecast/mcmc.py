@@ -1,5 +1,6 @@
 import argparse
 import contextlib
+import logging
 import os
 import time
 from multiprocessing import Pool
@@ -10,8 +11,10 @@ from astropy import cosmology
 
 from ..theory import Pee_model
 from ..plotting import corner as _corner_plot
-from .config import VALID_DATA, build_ells, load_config, run_label
-from .datapoints import make_datapoints
+from .config import VALID_DATA, build_ells, load_config, run_label, setup_logging
+from .datapoints import load_datapoints, make_datapoints
+
+logger = logging.getLogger(__name__)
 
 
 @contextlib.contextmanager
@@ -39,6 +42,7 @@ def get_or_make_datapoints(cfg):
     "ells_tau"/"ells_ksz"/"ells_bb" (their multipole grids), ready to feed to
     `run_mcmc`.
     """
+    setup_logging(cfg)
     cos = cosmology.Planck18
     ells = build_ells(cfg)
     telescopes = cfg["telescopes"]
@@ -49,34 +53,24 @@ def get_or_make_datapoints(cfg):
     with _chdir(cfg["output_dir"]):
         os.makedirs("data", exist_ok=True)
         if os.path.exists(f"data/{label1}_cov_ksz.txt"):
-            print("Reading mock data points from file...")
-            ells_bb, bb_data = np.loadtxt(f"data/{label1}_bb_datapoints.txt", unpack=True)
-            ells_ksz, ksz_data = np.loadtxt(f"data/{label1}_ksz_datapoints.txt", unpack=True)
-            ells_tau, tau_data = np.loadtxt(f"data/{label1}_tau_datapoints.txt", unpack=True)
-            assert np.allclose(ells[0], ells_tau), "ells do not match for tau!"
-            assert np.allclose(ells[1], ells_ksz), "ells do not match for ksz!"
-            assert np.allclose(ells[2], ells_bb), "ells do not match for bb!"
-            cov_bb = np.loadtxt(f"data/{label1}_cov_bb.txt", unpack=True)
-            cov_ksz = np.loadtxt(f"data/{label1}_cov_ksz.txt", unpack=True)
-            cov_tau = np.loadtxt(f"data/{label1}_cov_tau.txt", unpack=True)
-            for i, cov in enumerate([cov_tau, cov_ksz, cov_bb]):
-                assert cov.shape == (ells[i].size, ells[i].size), "ells do not match cov!"
-
+            logger.info("Reading mock data points from file...")
+            datapoints = load_datapoints("data", label1, ells=ells)
         else:
-            print("Generating mock data points...")
+            logger.info("Generating mock data points...")
             tau_data, ksz_data, bb_data, cov_tau, cov_ksz, cov_bb = make_datapoints(
                 theta_true,
                 ells=ells,
                 telescopes=telescopes, randomness=False,
                 cos=cos, save=label1, use_ksz_emulator=use_ksz_emulator,
             )
-        print("Done.")
+            datapoints = {
+                "tau": tau_data, "ksz": ksz_data, "bb": bb_data,
+                "cov_tau": cov_tau, "cov_ksz": cov_ksz, "cov_bb": cov_bb,
+                "ells_tau": ells[0], "ells_ksz": ells[1], "ells_bb": ells[2],
+            }
+        logger.info("Done.")
 
-    return {
-        "tau": tau_data, "ksz": ksz_data, "bb": bb_data,
-        "cov_tau": cov_tau, "cov_ksz": cov_ksz, "cov_bb": cov_bb,
-        "ells_tau": ells[0], "ells_ksz": ells[1], "ells_bb": ells[2],
-    }
+    return datapoints
 
 
 def get_model(theta, preion_model, datapoints, log_kappa):
@@ -132,9 +126,10 @@ def run_mcmc(datapoints, cfg):
 
     Writes an emcee HDFBackend chain to `{output_dir}/backends/mcmc_{label}_backend.h5`.
     """
+    setup_logging(cfg)
     data = cfg["data"]
     label = run_label(cfg, data)
-    print(label)
+    logger.info(label)
 
     cos = cosmology.Planck18
     overwrite = cfg["overwrite"]
@@ -143,6 +138,7 @@ def run_mcmc(datapoints, cfg):
 
     niterations = cfg["niterations"]
     nwalkers = cfg["nwalkers"]
+    progress = cfg["progress"]
 
     theta_true = list(cfg["theta_true"])
     plot = cfg["plot"]
@@ -165,9 +161,9 @@ def run_mcmc(datapoints, cfg):
         preion_model.run_camb = False
 
         t0 = time.time()
-        print(lnlike(theta_true, preion_model, datapoints, log_kappa, data)[0])
+        logger.info(lnlike(theta_true, preion_model, datapoints, log_kappa, data)[0])
         t1 = time.time()
-        print(f'It takes {t1-t0:.1f} seconds to compute one model.')
+        logger.info(f'It takes {t1-t0:.1f} seconds to compute one model.')
 
         # blobs & backend
         if os.path.isfile(f'backends/mcmc_{label}_backend.h5') and overwrite:
@@ -189,26 +185,26 @@ def run_mcmc(datapoints, cfg):
                 pool=pool,
                 blobs_dtype=dtype, )
             t0 = time.time()
-            sampler.run_mcmc(p0, niterations, progress=False)
+            sampler.run_mcmc(p0, niterations, progress=progress)
             t1 = time.time()
-        print(f'It took {(t1-t0)/60./60.:.1f} hours to run {niterations} iterations with {nwalkers} walkers.')
+        logger.info(f'It took {(t1-t0)/60./60.:.1f} hours to run {niterations} iterations with {nwalkers} walkers.')
 
         samples = sampler.get_chain(flat=False)
 
         # auto-correlation analysis to assess convergence and define burn-in
         taus = sampler.get_autocorr_time(tol=0)
         if np.isnan(taus).any():
-            print('NaN tau. Taking max.')
+            logger.info('NaN tau. Taking max.')
         endtau = np.nanmax(taus)
         converged = np.all(taus * 60 < sampler.iteration)
-        print('Auto-correlation time: %.2f. Converged: %s.' % (endtau, converged))
+        logger.info('Auto-correlation time: %.2f. Converged: %s.' % (endtau, converged))
         burnin = int(max(0.1*samples.shape[0], 2.*np.nanmax(taus)))
-        print('burnin = %.1f' % (burnin/samples.shape[0]))
+        logger.info('burnin = %.1f' % (burnin/samples.shape[0]))
 
         flatsamples = sampler.get_chain(flat=True, discard=burnin)
         cov = np.cov(flatsamples.T)
         fom = np.sqrt(np.linalg.det(cov))
-        print(f'FoM = {fom:.1e}')
+        logger.info(f'FoM = {fom:.1e}')
 
     return sampler
 

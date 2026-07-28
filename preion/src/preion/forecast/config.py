@@ -1,3 +1,6 @@
+import logging
+import os
+
 import numpy as np
 import yaml
 
@@ -14,6 +17,7 @@ _DEFAULTS = {
     "use_ksz_emulator": "RF",
     "overwrite": True,
     "plot": False,
+    "progress": False,
     "telescopes": None,
     "output_dir": ".",
     "ells": {
@@ -66,3 +70,29 @@ def run_label(cfg, data=None):
     if data in ("bb", "ksz", "tau"):
         return f"{label}_{data}_only"
     return f"{label}_{data}"
+
+
+def setup_logging(cfg):
+    """Configure the shared "preion.forecast" logger to write plain-text
+    messages to {output_dir}/{label}.log instead of the console. Safe to
+    call more than once for the same cfg (e.g. get_or_make_datapoints then
+    run_mcmc in the same process) — only reconfigures if the resolved path
+    actually changes, so a second call doesn't truncate what the first
+    call already wrote.
+    """
+    os.makedirs(cfg["output_dir"], exist_ok=True)
+    log_path = os.path.abspath(os.path.join(cfg["output_dir"], f"{cfg['label']}.log"))
+    logger = logging.getLogger("preion.forecast")
+    for h in logger.handlers:
+        if isinstance(h, logging.FileHandler) and os.path.abspath(h.baseFilename) == log_path:
+            return logger
+    for h in list(logger.handlers):
+        logger.removeHandler(h)
+        h.close()
+    mode = "w" if cfg["overwrite"] else "a"
+    handler = logging.FileHandler(log_path, mode=mode)
+    handler.setFormatter(logging.Formatter("%(message)s"))
+    logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
+    logger.propagate = False
+    return logger

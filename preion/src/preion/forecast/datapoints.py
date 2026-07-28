@@ -1,3 +1,4 @@
+import logging
 import os
 
 import numpy as np
@@ -7,6 +8,8 @@ from scipy.interpolate import interp1d
 from ..theory import Pee_model
 from .utils import sample_var, noise, get_lbins, tau_noise, get_cls_for_tau_noise
 from ..parameters import telescope_specs
+
+logger = logging.getLogger(__name__)
 
 
 def make_datapoints(
@@ -53,7 +56,7 @@ def make_datapoints(
             / dells_ksz
         )
         if use_ksz_emulator == 'RF':
-            print(f'Adding emulator reconstruction errors for {use_ksz_emulator}')
+            logger.info(f'Adding emulator reconstruction errors for {use_ksz_emulator}')
             cov_ksz += np.diag(np.ones_like(ells_ksz) * 0.01**2) # emulator error (~ constant with multipole)
         cov_bb = np.diag(
             1./(2. * ells_bb+1.) / telescope_specs[tel_bb]['fsky'] * 2. * (total_bb+noise(ells_bb, telescope_specs[tel_bb], pol=True, is_cl=False))**2
@@ -87,3 +90,46 @@ def make_datapoints(
         np.savetxt(f'data/{str(save)}_cov_bb.txt', cov_bb)
 
     return tau_ps, ksz_ps, total_bb, cov_tau, cov_ksz, cov_bb
+
+
+def load_datapoints(data_dir, label, ells=None):
+    """Load tau/kSZ/BB datapoints + covariances for `label` from `data_dir`
+    (as written by make_datapoints(..., save=label)). If `ells` (a
+    [ells_tau, ells_ksz, ells_bb] list) is given, assert the loaded
+    multipole grids match it.
+
+    Returns a dict with keys "tau"/"ksz"/"bb", "cov_tau"/"cov_ksz"/"cov_bb",
+    and "ells_tau"/"ells_ksz"/"ells_bb".
+    """
+    ells_tau, tau_data = np.loadtxt(os.path.join(data_dir, f"{label}_tau_datapoints.txt"), unpack=True)
+    ells_ksz, ksz_data = np.loadtxt(os.path.join(data_dir, f"{label}_ksz_datapoints.txt"), unpack=True)
+    ells_bb, bb_data = np.loadtxt(os.path.join(data_dir, f"{label}_bb_datapoints.txt"), unpack=True)
+    cov_tau = np.loadtxt(os.path.join(data_dir, f"{label}_cov_tau.txt"))
+    cov_ksz = np.loadtxt(os.path.join(data_dir, f"{label}_cov_ksz.txt"))
+    cov_bb = np.loadtxt(os.path.join(data_dir, f"{label}_cov_bb.txt"))
+
+    if ells is not None:
+        assert np.allclose(ells[0], ells_tau), "ells do not match for tau!"
+        assert np.allclose(ells[1], ells_ksz), "ells do not match for ksz!"
+        assert np.allclose(ells[2], ells_bb), "ells do not match for bb!"
+    for loaded_ells, cov in zip([ells_tau, ells_ksz, ells_bb], [cov_tau, cov_ksz, cov_bb]):
+        assert cov.shape == (loaded_ells.size, loaded_ells.size), "ells do not match cov!"
+
+    return {
+        "tau": tau_data, "ksz": ksz_data, "bb": bb_data,
+        "cov_tau": cov_tau, "cov_ksz": cov_ksz, "cov_bb": cov_bb,
+        "ells_tau": ells_tau, "ells_ksz": ells_ksz, "ells_bb": ells_bb,
+    }
+
+
+_PACKAGED_DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
+_PACKAGED_LABEL = "mcmc_tutorial"
+
+
+def load_packaged_datapoints():
+    """Load the pre-computed cosmic-variance-limited mock tau/kSZ/BB
+    datapoints + covariances shipped with the package (generated from the
+    defaults in configs/config_tutorial_mcmc.yaml: theta_true=[7.0, 1.5, 3.7, 0.10],
+    telescopes=None, use_ksz_emulator=False). Useful for examples/tests that
+    just need *some* realistic mock data without re-running CAMB."""
+    return load_datapoints(_PACKAGED_DATA_DIR, _PACKAGED_LABEL)

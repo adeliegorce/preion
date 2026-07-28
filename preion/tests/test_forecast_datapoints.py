@@ -8,6 +8,21 @@ pytest.importorskip("preion.forecast.datapoints")
 from preion.forecast.datapoints import make_datapoints
 
 
+def test_packaged_datapoints_shapes(packaged_datapoints):
+    # configs/config_tutorial_mcmc.yaml's ells grids: tau 49 points, ksz 14, bb 50.
+    assert packaged_datapoints["tau"].shape == (49,)
+    assert packaged_datapoints["ksz"].shape == (14,)
+    assert packaged_datapoints["bb"].shape == (50,)
+    assert packaged_datapoints["cov_tau"].shape == (49, 49)
+    assert packaged_datapoints["cov_ksz"].shape == (14, 14)
+    assert packaged_datapoints["cov_bb"].shape == (50, 50)
+    assert packaged_datapoints["ells_tau"].shape == (49,)
+    assert packaged_datapoints["ells_ksz"].shape == (14,)
+    assert packaged_datapoints["ells_bb"].shape == (50,)
+    for key in ["tau", "ksz", "bb", "cov_tau", "cov_ksz", "cov_bb"]:
+        assert np.all(np.isfinite(packaged_datapoints[key]))
+
+
 @pytest.mark.slow
 def test_make_datapoints_shapes_no_telescope(theta_true, tiny_ells):
     tau_ps, ksz_ps, total_bb, cov_tau, cov_ksz, cov_bb = make_datapoints(

@@ -28,3 +28,11 @@ def tiny_ells():
 @pytest.fixture
 def theta_true():
     return [7.0, 1.5, 3.7, 0.10]
+
+
+@pytest.fixture
+def packaged_datapoints():
+    """The pre-computed mock tau/kSZ/BB datapoints shipped with the
+    package, for tests that need realistic data without running CAMB."""
+    from preion.forecast.datapoints import load_packaged_datapoints
+    return load_packaged_datapoints()
