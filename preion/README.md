@@ -129,6 +129,12 @@ convergence diagnostics (autocorrelation time, burn-in, Gelman-Rubin R-hat)
 and a bias/error summary table, and (with `--save-figures`) writes corner,
 trace, and triangle plots to `{output_dir}/figures/`.
 
+Both `preion-run-mcmc` and `preion-read-mcmc` write their status/timing/diagnostic
+messages to a logfile at `{output_dir}/{label}.log` instead of the console
+(`label` is the YAML config's `label` field), so the terminal only shows the
+`emcee`/`tqdm` progress bar (if `progress: true` in the config). The logfile
+is truncated on each run if `overwrite: true`, appended to otherwise.
+
 
 Both the run and the read-back step are driven by the same YAML config, so
 they always agree on parameters and output paths: see
@@ -159,7 +165,7 @@ src/preion/
 ├── plotting.py            # vendored corner-plot fork (originally triangleme2.py / Foreman-Mackey's corner)
 └── forecast/
     ├── utils.py            # noise/statistics helpers + tau quadratic-estimator noise (plancklens-based)
-    ├── config.py          # shared YAML config loading for mcmc.py / read_mcmc.py
+    ├── config.py          # shared YAML config loading + setup_logging (per-label logfile) for mcmc.py / read_mcmc.py
     ├── datapoints.py      # make_datapoints: mock data + covariance generation
     ├── mcmc.py             # get_or_make_datapoints, run_mcmc + `preion-run-mcmc` CLI
     └── read_mcmc.py        # chain diagnostics/plots + `preion-read-mcmc` CLI
