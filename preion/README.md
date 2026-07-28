@@ -161,6 +161,6 @@ src/preion/
     ├── utils.py            # noise/statistics helpers + tau quadratic-estimator noise (plancklens-based)
     ├── config.py          # shared YAML config loading for mcmc.py / read_mcmc.py
     ├── datapoints.py      # make_datapoints: mock data + covariance generation
-    ├── mcmc.py             # run_mcmc_cv_limited_new + `preion-run-mcmc` CLI
+    ├── mcmc.py             # get_or_make_datapoints, run_mcmc + `preion-run-mcmc` CLI
     └── read_mcmc.py        # chain diagnostics/plots + `preion-read-mcmc` CLI
 ```

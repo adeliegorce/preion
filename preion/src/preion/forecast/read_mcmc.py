@@ -27,7 +27,7 @@ def _theta_true(cfg):
 
 def load_mock_data(cfg):
     """Load the mock tau/kSZ/BB data points + covariances written by
-    preion.forecast.mcmc.run_mcmc_cv_limited_new for this config."""
+    preion.forecast.mcmc.get_or_make_datapoints for this config."""
     data_dir = os.path.join(cfg["output_dir"], "data")
     label1 = cfg["label"]
     ells_bb, bb_data = np.loadtxt(os.path.join(data_dir, f"{label1}_bb_datapoints.txt"), unpack=True)
