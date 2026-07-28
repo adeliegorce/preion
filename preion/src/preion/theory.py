@@ -411,6 +411,21 @@ class Pee_model:
         if run_camb:
             self.run_camb(kmax_pk=kmax_pk)
 
+    def __getstate__(self):
+        """Drop the CAMB-derived cache when pickling: `self.results`
+        (camb.CAMBdata) explicitly forbids pickling, and `self.pars`/
+        `self._primary_spectra_cache` are only meaningful alongside it. The
+        receiving copy lazily rebuilds them on next use, same as a freshly
+        constructed model."""
+        state = self.__dict__.copy()
+        state['pars'] = None
+        state['results'] = None
+        state['_primary_spectra_cache'] = {}
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+
     def xe(self, z):
         """
         Computes model's reionisation history.
