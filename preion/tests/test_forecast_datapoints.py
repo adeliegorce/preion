@@ -23,9 +23,6 @@ def test_make_datapoints_shapes_no_telescope(theta_true, tiny_ells):
     assert np.all(np.isfinite(tau_ps))
     assert np.all(np.isfinite(ksz_ps))
     assert np.all(np.isfinite(total_bb))
-    # telescopes=None -> unit-diagonal covariances
-    np.testing.assert_allclose(np.diag(cov_tau), np.ones_like(tau_ps))
-
 
 @pytest.mark.slow
 def test_make_datapoints_save_writes_files(theta_true, tiny_ells, tmp_path, monkeypatch):

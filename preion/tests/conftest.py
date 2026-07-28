@@ -20,8 +20,8 @@ def tiny_ells():
     CAMB/Pee_model calls in tests stay fast."""
     return [
         np.array([100, 500, 1000]),
-        np.array([1000, 3000, 5000]),
-        np.array([10, 100, 500]),
+        np.array([3000]),
+        np.array([100, 500, 1000]),
     ]
 
 

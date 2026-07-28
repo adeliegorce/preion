@@ -30,7 +30,7 @@ def test_sample_var_with_telescope_dict():
 
 def test_noise_positive_and_scales_with_pol():
     ls = np.array([100, 500, 1000])
-    tel = telescope_specs['CMB-HD']
+    tel = telescope_specs['SO-LAT']
     nl = noise(ls, tel, pol=False)
     nl_pol = noise(ls, tel, pol=True)
     assert np.all(nl > 0)
@@ -38,7 +38,7 @@ def test_noise_positive_and_scales_with_pol():
 
 
 def test_get_lbins_within_telescope_range():
-    ells, edges, dells = get_lbins('CMB-HD')
+    ells, edges, _ = get_lbins('CMB-HD')
     tel = telescope_specs['CMB-HD']
     assert ells.min() >= tel['lmin']
     assert ells.max() <= tel['lmax']
