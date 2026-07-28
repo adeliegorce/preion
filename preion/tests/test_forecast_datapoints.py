@@ -3,6 +3,8 @@ import os
 import numpy as np
 import pytest
 
+pytest.importorskip("preion.forecast.datapoints")
+
 from preion.forecast.datapoints import make_datapoints
 
 

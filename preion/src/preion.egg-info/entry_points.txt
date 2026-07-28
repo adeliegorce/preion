@@ -1,0 +1,3 @@
+[console_scripts]
+preion-read-mcmc = preion.forecast.read_mcmc:main
+preion-run-mcmc = preion.forecast.mcmc:main

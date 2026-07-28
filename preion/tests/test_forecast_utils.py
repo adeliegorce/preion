@@ -1,8 +1,10 @@
 import numpy as np
 import pytest
 
+pytest.importorskip("preion.forecast.utils")
+
 from preion.parameters import telescope_specs
-from preion.utils import sample_var, noise, get_lbins
+from preion.forecast.utils import sample_var, noise, get_lbins
 
 
 def test_sample_var_shape_mismatch_raises():

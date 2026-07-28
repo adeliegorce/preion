@@ -9,6 +9,11 @@ dependencies = [
     "scipy",
     "astropy",
     "camb",
+    "ipykernel",
+]
+
+[project.optional-dependencies]
+forecast = [
     "matplotlib",
     "emcee",
     "h5py",
@@ -16,11 +21,8 @@ dependencies = [
     "arviz",
     "tqdm",
     "pyyaml",
-    "ipykernel",
     "plancklens @ git+https://github.com/carronj/plancklens",
 ]
-
-[project.optional-dependencies]
 test = ["pytest"]
 
 [project.scripts]

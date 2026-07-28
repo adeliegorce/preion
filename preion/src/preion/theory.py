@@ -15,7 +15,6 @@ from scipy.integrate import cumulative_trapezoid as cumtrapz, simpson as simps, 
 from scipy.interpolate import interp1d
 
 from .parameters import *
-from .utils import *
 
 ##################################
 # Integration/precision settings #

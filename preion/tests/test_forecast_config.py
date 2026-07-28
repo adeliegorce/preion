@@ -1,6 +1,8 @@
 import numpy as np
 import pytest
 
+pytest.importorskip("preion.forecast.config")
+
 from preion.forecast.config import build_ells, load_config, run_label
 
 EXAMPLE_CONFIG = "configs/cv_limited_new.yaml"

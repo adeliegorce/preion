@@ -9,7 +9,7 @@ import numpy as np
 from astropy import cosmology
 
 from ..theory import Pee_model
-from ..utils import sample_var
+from .utils import sample_var
 from ..plotting import corner as _corner_plot
 from .config import VALID_DATA, build_ells, load_config, run_label
 from .datapoints import make_datapoints

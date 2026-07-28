@@ -5,7 +5,7 @@ from astropy import cosmology
 from scipy.interpolate import interp1d
 
 from ..theory import Pee_model
-from ..utils import sample_var, noise, get_lbins, tau_noise, get_cls_for_tau_noise
+from .utils import sample_var, noise, get_lbins, tau_noise, get_cls_for_tau_noise
 from ..parameters import telescope_specs
 
 
@@ -67,9 +67,11 @@ def make_datapoints(
         )
 
     else:
-        cov_tau = np.diag(np.ones_like(tau_ps))
-        cov_ksz = np.diag(np.ones_like(ksz_ps))
-        cov_bb = np.diag(np.ones_like(total_bb))
+        cov_tau = np.diag(sample_var(ells[0], tau_ps, 1.)**2)
+        cov_ksz = np.diag(sample_var(ells[1], ksz_ps, 1.)**2)
+        if use_ksz_emulator:
+            cov_ksz += np.diag(np.ones_like(ells[1]) * 0.01**2) # emulator error (~ constant with multipole)
+        cov_bb = np.diag(sample_var(ells[2], total_bb, 1.)**2)
 
     if randomness:
         ksz_ps = np.random.normal(ksz_ps, np.sqrt(np.diag(cov_ksz)))
