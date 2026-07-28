@@ -307,7 +307,7 @@ def hist2d(x, y, smooth=0., sigmas=[1,2,3], corrcoef=False, color='k', fill_cont
     weights = kwargs.get('weights', None)
     zorder = kwargs.get('zorder',0)
 #MD
-    cmap  = cm.get_cmap(kwargs.get("cmap", "gray"))
+    cmap  = matplotlib.colormaps[kwargs.get("cmap", "gray")]
     # labels=[r'$%i-\sigma$' %(cr) for cr in sigmas]
     # levels = 1.0 - np.exp(-0.5 * np.arange(0.5, 2.1, 0.5) ** 2)
 
