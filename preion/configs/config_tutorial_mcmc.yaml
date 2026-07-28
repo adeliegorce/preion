@@ -8,8 +8,8 @@ data: all              # one of: bb, ksz, tau, all
 theta_true: [7.0, 1.5, 3.7, 0.10]   # [zre, dz, alpha0, kappa]
 log_kappa: true
 
-niterations: 100
-nwalkers: 8
+niterations: 10
+nwalkers: 4
 
 fsky: 1.0
 use_ksz_emulator: false
