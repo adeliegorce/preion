@@ -1,0 +1,31 @@
+# Example run config for preion-run-mcmc / preion-read-mcmc.
+# Mirrors the defaults that used to be hardcoded in
+# forecast_autos/run_mcmc_cv_limited_new.py.
+
+label: cv_limited_new
+data: all              # one of: bb, ksz, tau, all
+
+theta_true: [7.0, 1.5, 3.7, 0.10]   # [zre, dz, alpha0, kappa]
+log_kappa: true
+
+niterations: 100000
+nwalkers: 8
+
+fsky: 1.0
+use_ksz_emulator: RF   # RF, NN, false (RF/NN require the optional emul_sz package)
+overwrite: true
+plot: false
+
+# telescopes: null means cosmic-variance-limited (no instrument noise).
+# Set to [tel_tau, tel_ksz, tel_bb] (keys from preion.parameters.telescope_specs)
+# to use a real instrument's noise instead.
+telescopes: null
+
+# Where data/, backends/, and (if plot/--save-figures) figures/ subdirectories
+# are read from and written to.
+output_dir: .
+
+ells:
+  tau: {start: 100, stop: 5000, step: 100}
+  ksz: {start: 1000, stop: 8000, step: 500}
+  bb: {start: 10, stop: 1000, num: 50}

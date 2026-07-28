@@ -1,0 +1,87 @@
+import os
+
+import numpy as np
+from astropy import cosmology
+from scipy.interpolate import interp1d
+
+from ..theory import Pee_model
+from ..utils import sample_var, noise, get_lbins, tau_noise, get_cls_for_tau_noise
+from ..parameters import telescope_specs
+
+
+def make_datapoints(
+        theta, telescopes, lbin_edges=None, ells=None,
+        use_ksz_emulator=False, randomness=False,
+        cos=cosmology.Planck18, save=None):
+
+    assert np.size(theta) >= 4
+    use_ells = False if ells is None else True
+    if telescopes is not None:
+        tel_tau, tel_ksz, tel_bb = telescopes
+        ells = []
+        dells = []
+        for i, tel in enumerate(telescopes):
+            assert tel in telescope_specs.keys()
+            if not use_ells:
+                ls, _, dls = get_lbins(tel, lbin_edges=lbin_edges[i] if lbin_edges is not None else None)
+            else:
+                ls = np.copy(ells[i])
+                dls = np.diff(ells[i]).mean()
+            ells.append(ls)
+            dells.append(dls)
+    else:
+        assert len(ells) == 3
+        dells = [np.diff(ells[i]).mean() for i in range(3)]
+    ells_tau, ells_ksz, ells_bb = ells
+    dells_tau, dells_ksz, dells_bb = dells
+
+    preion_model = Pee_model(
+        zre_h=theta[0], dz_h=theta[1],
+        alpha0=theta[2], kappa=theta[3],
+        h=cos.h, Ob_0=cos.Ob0, Om_0=cos.Om0,
+        verbose=False, run_camb=True,
+        use_ksz_emulator=use_ksz_emulator)
+    ksz_ps = preion_model.get_ksz(ells=ells_ksz, signal='patchy', Dells=True)[:, 0]
+    tau_ps = preion_model.get_tau(ells=ells_tau, signal='both', Dells=True).sum(axis=1)
+    total_bb = preion_model.get_B_modes(ells=ells_bb, Dells=True, Qrms=17.0)
+
+    if telescopes is not None:
+
+        ksz_obs = ksz_ps+noise(ells_ksz, telescope_specs[tel_ksz], pol=False, is_cl=False)
+        cov_ksz = np.diag(
+            1./(2. * ells_ksz+1.) / telescope_specs[tel_ksz]['fsky'] * 2. * ksz_obs**2
+            / dells_ksz
+        )
+        if use_ksz_emulator == 'RF':
+            print(f'Adding emulator reconstruction errors for {use_ksz_emulator}')
+            cov_ksz += np.diag(np.ones_like(ells_ksz) * 0.01**2) # emulator error (~ constant with multipole)
+        cov_bb = np.diag(
+            1./(2. * ells_bb+1.) / telescope_specs[tel_bb]['fsky'] * 2. * (total_bb+noise(ells_bb, telescope_specs[tel_bb], pol=True, is_cl=False))**2
+            / dells_bb
+        )
+        primary_cls2, lensed_cls2, tau_cls2 = get_cls_for_tau_noise(preion_model)
+        tau_noise_res = tau_noise(tel_tau, primary_cls2, lensed_cls2, tau_cls2, is_cl=False)
+        cov_tau = np.diag(
+            1./(2. * ells_tau+1.) / telescope_specs[tel_tau]['fsky'] * 2. * (tau_ps+interp1d(np.arange(tau_noise_res.size), tau_noise_res)(ells_tau))**2
+            / dells_tau
+        )
+
+    else:
+        cov_tau = np.diag(np.ones_like(tau_ps))
+        cov_ksz = np.diag(np.ones_like(ksz_ps))
+        cov_bb = np.diag(np.ones_like(total_bb))
+
+    if randomness:
+        ksz_ps = np.random.normal(ksz_ps, np.sqrt(np.diag(cov_ksz)))
+        total_bb = np.random.normal(total_bb, np.sqrt(np.diag(cov_bb)))
+        tau_ps = np.random.normal(tau_ps, np.sqrt(np.diag(cov_tau)))
+
+    if (save is not None) and (not os.path.exists(f'data/{str(save)}_bb_datapoints.txt')):
+        np.savetxt(f'data/{str(save)}_bb_datapoints.txt', np.c_[ells_bb, total_bb], header='ell, Dl BB total [uK2]')
+        np.savetxt(f'data/{str(save)}_ksz_datapoints.txt', np.c_[ells_ksz, ksz_ps], header='ell, Dl kSZ [uK2]')
+        np.savetxt(f'data/{str(save)}_tau_datapoints.txt', np.c_[ells_tau, tau_ps], header='ell, Dl tautau')
+        np.savetxt(f'data/{str(save)}_cov_ksz.txt', cov_ksz)
+        np.savetxt(f'data/{str(save)}_cov_tau.txt', cov_tau)
+        np.savetxt(f'data/{str(save)}_cov_bb.txt', cov_bb)
+
+    return tau_ps, ksz_ps, total_bb, cov_tau, cov_ksz, cov_bb

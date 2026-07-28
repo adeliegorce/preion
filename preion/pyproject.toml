@@ -1,0 +1,44 @@
+[project]
+name = "preion"
+version = "0.1.0"
+description = "Electron-density-based reionisation model (Pee_model) and kSZ/tau/BB MCMC forecast pipeline"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    # numpy>=2 breaks camb's matter-power interpolator: `results.get_matter_power_interpolator(...).P`
+    # fed through np.vectorize raises "ValueError: setting an array element with a sequence."
+    # under numpy>=2's stricter dtype inference, independent of camb version. Confirmed by testing
+    # numpy 1.26.4 (works, both with camb 1.6.4 and camb 2.0.0) vs numpy 2.5.1 (fails, same camb).
+    "numpy<2",
+    "scipy",
+    "astropy",
+    "camb",
+    "matplotlib",
+    "emcee",
+    "h5py",
+    "healpy",
+    "arviz",
+    "tqdm",
+    "pyyaml",
+    "plancklens @ git+https://github.com/carronj/plancklens",
+]
+
+[project.optional-dependencies]
+test = ["pytest"]
+
+[project.scripts]
+preion-run-mcmc = "preion.forecast.mcmc:main"
+preion-read-mcmc = "preion.forecast.read_mcmc:main"
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "slow: exercises CAMB (via Pee_model(run_camb=True)) and is a few seconds per test",
+]
