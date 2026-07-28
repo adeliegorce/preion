@@ -22,7 +22,8 @@ uv pip install -e ".[test]"
 ### With conda
 
 ```bash
-conda activate preion2   # or any Python >=3.9 env with a working C/Fortran toolchain
+conda create -n preion python=3.11 gcc gfortran -c conda-forge
+conda activate preion
 cd preion
 pip install -e ".[test]"
 ```
