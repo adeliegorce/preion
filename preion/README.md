@@ -34,18 +34,9 @@ Theory + forecast:
 cd preion
 uv venv --python 3.11   # any Python >=3.9
 source .venv/bin/activate
-uv pip install "numpy<2"
+uv pip install "numpy<2"  # for plancklens
 uv pip install --no-build-isolation-package plancklens -e ".[forecast,test]"
 ```
-
-`plancklens` declares its build requirement as unpinned `numpy` (see its
-`pyproject.toml`), so building it in the default isolated build environment
-pulls in numpy>=2 and produces Fortran extensions with a mismatched f2py ABI —
-this fails at link time with `undefined reference to
-'_npy_f2py_ARRAY_APIPyArray_RUNTIME_VERSION'`. Installing `numpy<2` into the
-venv first and disabling build isolation for just `plancklens`
-(`--no-build-isolation-package plancklens`) makes it build against the
-pinned numpy already in the venv instead.
 
 ### With conda
 
@@ -71,10 +62,10 @@ pip install -e ".[forecast,test]"
 
 - `plancklens` (only pulled in by the `forecast` extra) comes straight from
 [github.com/carronj/plancklens](https://github.com/carronj/plancklens) and
-built during install — it has compiled extensions, so a C/Fortran toolchain
+built during install. It has compiled extensions, so a C/Fortran toolchain
 (gcc, gfortran) needs to be available. 
 
-- `numpy` is pinned to `<2` because of `camb`'s matter-power interpolator
+- `numpy` is pinned to `<2` because of `camb`'s matter-power interpolator and of `plancklens`
 
 - The `theory` module can use the `emul_sz` package to speed up the kSZ power spectrum calculation with an
 emulator. `emul_sz` is not a declared dependency as it is not available on
