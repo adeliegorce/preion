@@ -64,6 +64,19 @@ Mpcm = (1.0 * units.Mpc).to(units.m).value  # one Mpc in [m]
 Mpckm = Mpcm / 1e3
 
 
+def _pk_from_interpolator(interp, k, z):
+    """Vectorized P(k, z) lookup for a CAMB matter-power interpolator.
+
+    Replaces `np.vectorize(lambda k, z: interp.P(z, k))`, which evaluates
+    one array element at a time in a Python loop, with a single broadcast +
+    pointwise (`grid=False`) call into the underlying
+    scipy.interpolate.RectBivariateSpline.
+    """
+    k_b, z_b = np.broadcast_arrays(np.asarray(k), np.asarray(z))
+    vals = interp.P(z_b.ravel(), k_b.ravel(), grid=False)
+    return vals.reshape(k_b.shape)
+
+
 class Pee_model:
     def __init__(
         self,
@@ -205,6 +218,9 @@ class Pee_model:
         self.cosmomc = cosmomc
         self.asym_h_reion = asym_h_reion
         self.has_camb_run = False
+        self.pars = None
+        self.results = None
+        self._primary_spectra_cache = {}
 
         # INITIALISE COSMOLOGY
 
@@ -612,7 +628,9 @@ class Pee_model:
                 If len(ells) == 1, use np.arange(0, ells[0]).
                 If None, use np.arange(0, 2000).
             results: CAMB.results object
-                Can be fed to avoid computing results twice.
+                Can be fed to avoid computing results twice. If None,
+                defaults to the model's cached `self.results` (from
+                `run_camb()`) when available, else computes a fresh one.
             unit: str
                 Unit to get results in. Similar to CAMB.
                 Default is 'muK'.
@@ -646,18 +664,25 @@ class Pee_model:
         else:
             lmax = int(np.max(ells))
 
-        pars = self.def_camb()
-        pars.set_for_lmax(lmax, lens_potential_accuracy=lens_potential_accuracy)
-        if results is None:
-            results = camb.get_results(pars)
+        use_cache = results is None and self.results is not None
+        cache_key = (lmax, unit, Dells, lens_potential_accuracy)
+        if use_cache and cache_key in self._primary_spectra_cache:
+            powers = self._primary_spectra_cache[cache_key]
         else:
-            assert isinstance(results, camb.CAMBdata)
-        results.calc_power_spectra(pars)
+            pars = self.def_camb()
+            pars.set_for_lmax(lmax, lens_potential_accuracy=lens_potential_accuracy)
+            if results is None:
+                results = self.results if self.results is not None else camb.get_results(pars)
+            else:
+                assert isinstance(results, camb.CAMBdata)
+            results.calc_power_spectra(pars)
 
-        if self.verbose:
-            print(" Computing CMB power spectra...")
-        powers = results.get_cmb_power_spectra(
-            pars, CMB_unit=unit, lmax=lmax, raw_cl=not Dells)
+            if self.verbose:
+                print(" Computing CMB power spectra...")
+            powers = results.get_cmb_power_spectra(
+                pars, CMB_unit=unit, lmax=lmax, raw_cl=not Dells)
+            if use_cache:
+                self._primary_spectra_cache[cache_key] = powers
         try:
             CL = powers[type]
         except KeyError:
@@ -710,6 +735,9 @@ class Pee_model:
         pars = self.def_camb()
         data = camb.get_background(pars)
         results = camb.get_results(pars)
+        self.pars = pars
+        self.results = results
+        self._primary_spectra_cache = {}
 
         # CMB spectra
         if self.run_CMB:
@@ -755,7 +783,7 @@ class Pee_model:
                 var1=model.Transfer_nonu,
                 var2=model.Transfer_nonu,
             )
-            self.Pk_lin = np.vectorize(lambda k, z: interp_l.P(z, k))
+            self.Pk_lin = lambda k, z: _pk_from_interpolator(interp_l, k, z)
             # Non-linear matter power spectrum
             interp_nl = camb.get_matter_power_interpolator(
                 pars,
@@ -767,7 +795,7 @@ class Pee_model:
                 var1=model.Transfer_nonu,
                 var2=model.Transfer_nonu,
             )
-            self.Pk = np.vectorize(lambda k, z: interp_nl.P(z, k))
+            self.Pk = lambda k, z: _pk_from_interpolator(interp_nl, k, z)
 
             self.Pk_lin_integ = self.Pk_lin(
                 kp_integ[:, None], z_integ[:, None, None]
@@ -1366,7 +1394,10 @@ class Pee_model:
 
         ells = np.array(ells, dtype=int)
 
-        ltemp = np.arange(1, max(2500, ells.max()), step=1)
+        # upper bound also covers Erms()'s fixed np.arange(5000) need, so
+        # both get_primary_spectra() calls below land on the same
+        # (lmax, unit, Dells, lens_potential_accuracy) cache entry
+        ltemp = np.arange(1, max(2500, ells.max(), 5000), step=1)
         CBB_screen_temp = np.zeros(ltemp.size)
 
         # primary EE modes
