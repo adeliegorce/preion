@@ -2,20 +2,20 @@
 # Mirrors the defaults that used to be hardcoded in
 # forecast_autos/run_mcmc_cv_limited_new.py.
 
-label: cv_limited_new
+label: mcmc_tutorial
 data: all              # one of: bb, ksz, tau, all
 
 theta_true: [7.0, 1.5, 3.7, 0.10]   # [zre, dz, alpha0, kappa]
 log_kappa: true
 
-niterations: 100000
+niterations: 100
 nwalkers: 8
 
 fsky: 1.0
-use_ksz_emulator: RF   # RF, NN, false (RF/NN require the optional emul_sz package)
+use_ksz_emulator: false
 overwrite: true
 plot: false
-progress: false   # show an emcee/tqdm progress bar while sampling
+progress: true   # show an emcee/tqdm progress bar while sampling
 
 # telescopes: null means cosmic-variance-limited (no instrument noise).
 # Set to [tel_tau, tel_ksz, tel_bb] (keys from preion.parameters.telescope_specs)
