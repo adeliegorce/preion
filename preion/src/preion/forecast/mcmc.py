@@ -9,6 +9,7 @@ import emcee
 import numpy as np
 from astropy import cosmology
 
+from ..parameters import props, telescope_specs
 from ..theory import Pee_model
 from ..plotting import corner as _corner_plot
 from .config import VALID_DATA, build_ells, load_config, run_label, setup_logging
@@ -73,6 +74,56 @@ def get_or_make_datapoints(cfg):
     return datapoints
 
 
+def plot_obs(cfg, datapoints=None):
+    """Plot the tau/kSZ/BB mock data points and error bars for a forecast
+    config, with the noiseless truth tau curve overlaid.
+
+    `cfg` is a config dict (as returned by preion.forecast.config.load_config)
+    or a path to a YAML config file. `datapoints` is a dict as returned by
+    `get_or_make_datapoints`/`load_datapoints`; if not given, it is obtained
+    with `get_or_make_datapoints(cfg)` (reading it from disk if already
+    generated, else generating it).
+    """
+    import matplotlib.pyplot as plt
+
+    if isinstance(cfg, str):
+        cfg = load_config(cfg)
+    if datapoints is None:
+        datapoints = get_or_make_datapoints(cfg)
+
+    telescopes = cfg["telescopes"]
+
+    ells = [datapoints["ells_tau"], datapoints["ells_ksz"], datapoints["ells_bb"]]
+    data = [datapoints["tau"], datapoints["ksz"], datapoints["bb"]]
+    errs = [np.sqrt(np.diag(datapoints[f"cov_{k}"])) for k in ("tau", "ksz", "bb")]
+    titles = ["Optical depth", "kSZ signal", r"$B$-modes"]
+    ylabels = [
+        r"$\ell(\ell+1)C_\ell^{\tau\tau}/2\pi$",
+        r"$\ell(\ell+1)C_\ell^{TT}/2\pi$ [$\mu$K$^2$]",
+        r"$\ell(\ell+1)C_\ell^{BB}/2\pi$ [$\mu$K$^2$]",
+    ]
+    tels = telescopes if telescopes is not None else [None, None, None]
+
+    fig, axes = plt.subplots(1, 3, figsize=(15, 4))
+
+    for i, ax in enumerate(axes):
+        ax.errorbar(ells[i], data[i], yerr=errs[i], lw=1., marker='.', capsize=2.)
+        ax.text(0.95, 0.95, titles[i], transform=ax.transAxes, bbox=props, ha='right', va='top')
+        ax.set_xlabel(r'Multipole $\ell$')
+        ax.set_ylabel(ylabels[i])
+        ax.grid()
+        if tels[i] is not None:
+            ax.set_title(tels[i])
+            ax.set_xlim(telescope_specs[tels[i]]['lmin'], telescope_specs[tels[i]]['lmax'])
+
+    axes[0].set_yscale('log')
+    axes[0].set_ylim(bottom=1e-8)
+    axes[2].set_yscale('log')
+
+    fig.tight_layout()
+    return fig, axes
+
+
 def get_model(theta, preion_model, datapoints, log_kappa):
     preion_model.zre_h = theta[0]
     preion_model.dz_h = theta[1]
@@ -117,6 +168,26 @@ def lnprob(theta, priors, preion_model, datapoints, log_kappa, data):
     return lp + ln, tau_model, ksz_model, bb_model
 
 
+_worker_model = None
+_worker_extra = None
+
+
+def _init_worker(preion_model, priors, datapoints, log_kappa, data):
+    """Pool(initializer=...) target: runs once per worker process at Pool
+    creation. Under the default 'fork' start method this doesn't pickle
+    `preion_model` (workers inherit it via fork's memory copy), unlike
+    passing it through `args=` to EnsembleSampler, which gets pickled on
+    every step and fails on the model's cached (unpicklable) CAMB results."""
+    global _worker_model, _worker_extra
+    _worker_model = preion_model
+    _worker_extra = (priors, datapoints, log_kappa, data)
+
+
+def lnprob_worker(theta):
+    priors, datapoints, log_kappa, data = _worker_extra
+    return lnprob(theta, priors, _worker_model, datapoints, log_kappa, data)
+
+
 def run_mcmc(datapoints, cfg):
     """Run a cosmic-variance-limited (or telescope-limited) emcee MCMC fitting
     kSZ/tau/BB data with a Pee_model. `datapoints` is a dict with keys
@@ -141,7 +212,6 @@ def run_mcmc(datapoints, cfg):
     progress = cfg["progress"]
 
     theta_true = list(cfg["theta_true"])
-    plot = cfg["plot"]
 
     with _chdir(cfg["output_dir"]):
         os.makedirs("backends", exist_ok=True)
@@ -177,10 +247,12 @@ def run_mcmc(datapoints, cfg):
         p0 = [np.random.uniform(low, high, size=nwalkers) for low, high in priors]
         p0 = np.vstack(p0).T
 
-        with Pool(nwalkers) as pool:
+        with Pool(
+            nwalkers, initializer=_init_worker,
+            initargs=(preion_model, priors, datapoints, log_kappa, data),
+        ) as pool:
             sampler = emcee.EnsembleSampler(
-                nwalkers, ndim, lnprob,
-                args=(priors, preion_model, datapoints, log_kappa, data),
+                nwalkers, ndim, lnprob_worker,
                 backend=backend,
                 pool=pool,
                 blobs_dtype=dtype, )
