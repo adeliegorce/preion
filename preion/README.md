@@ -5,12 +5,21 @@ producing consistent kSZ, tau-tau, 21cm, and B-mode power spectra, plus a
 secondary `preion.forecast` subpackage for running kSZ/tau/BB MCMC forecasts
 with `emcee` and reading back the resulting chains.
 
-This package supersedes the flat, non-installable modules that used to live in
-`With_Pee/` (`theory.py`, `utils.py`, `utils_tau.py`, `parameters.py`,
-`triangleme2.py`) and the driver scripts in `With_Pee/forecast_autos/`
-(`forecast_utils.py`, `run_mcmc_cv_limited_new.py`, `read_mcmc.ipynb`).
-
 ## Installation
+
+### With `uv` (recommended)
+
+Requires a C/Fortran toolchain (gcc, gfortran) on `PATH` for `plancklens`'
+compiled extensions.
+
+```bash
+cd preion
+uv venv --python 3.11   # any Python >=3.9
+source .venv/bin/activate
+uv pip install -e ".[test]"
+```
+
+### With conda
 
 ```bash
 conda activate preion2   # or any Python >=3.9 env with a working C/Fortran toolchain
@@ -39,7 +48,14 @@ PyPI, so it can't be installed generically. If it isn't importable,
 `Pee_model.__init__` catches the `ModuleNotFoundError`, prints a warning, and
 falls back to the full physical kSZ computation instead — so the package works
 correctly either way; you only need `emul_sz` if you want the emulator
-speed-up. Install it separately (into the same environment) if you want it.
+speed-up. Install it separately, into the same environment, from
+[git.ias.u-psud.fr/batman/emul_sz](https://git.ias.u-psud.fr/batman/emul_sz):
+
+```bash
+uv pip install git+https://git.ias.u-psud.fr/batman/emul_sz
+# or, with conda/pip:
+pip install git+https://git.ias.u-psud.fr/batman/emul_sz
+```
 
 ## Basic usage
 
