@@ -1,7 +1,7 @@
 # preion
 
-A reionisation model based on the electron density power spectrum (`Pee_model`),
-producing consistent kSZ, tau-tau, 21cm, and B-mode power spectra, plus a
+A reionisation model based on the electron density power spectrum,
+producing consistent kSZ, tau-tau, 21cm, and $B$-mode power spectra, plus a
 secondary `preion.forecast` subpackage for running kSZ/tau/BB MCMC forecasts
 with `emcee` and reading back the resulting chains.
 
@@ -28,72 +28,81 @@ cd preion
 pip install -e ".[test]"
 ```
 
-`plancklens` is pulled straight from
+### Installation notes
+
+- `plancklens` is pulled straight from
 [github.com/carronj/plancklens](https://github.com/carronj/plancklens) and
 built during install — it has compiled extensions, so a C/Fortran toolchain
-(gcc, gfortran) needs to be available. `preion2` already has one.
+(gcc, gfortran) needs to be available. 
 
-**`numpy` is pinned to `<2`.** `camb`'s matter-power interpolator
-(`results.get_matter_power_interpolator(...).P`), used inside
-`Pee_model.run_camb`, raises `ValueError: setting an array element with a
-sequence.` under numpy>=2's stricter `np.vectorize` dtype inference —
-confirmed independent of the installed `camb` version. Don't relax this pin
-without re-testing `Pee_model(run_camb=True)`.
+- `numpy` is pinned to `<2` because of `camb`'s matter-power interpolator
 
-### The `emul_sz` situation
-
-`Pee_model(..., use_ksz_emulator="RF")` (or `"NN"`) can use the private
-`emul_sz` package to speed up the kSZ power spectrum calculation. `emul_sz` is
-**not** a declared dependency here — it lives in a private repository, not on
-PyPI, so it can't be installed generically. If it isn't importable,
-`Pee_model.__init__` catches the `ModuleNotFoundError`, prints a warning, and
-falls back to the full physical kSZ computation instead — so the package works
-correctly either way; you only need `emul_sz` if you want the emulator
-speed-up. Install it separately, into the same environment, from
-[git.ias.u-psud.fr/batman/emul_sz](https://git.ias.u-psud.fr/batman/emul_sz):
-
-```bash
-uv pip install git+https://git.ias.u-psud.fr/batman/emul_sz
-# or, with conda/pip:
-pip install git+https://git.ias.u-psud.fr/batman/emul_sz
-```
+- The `theory` module can use the `emul_sz` package to speed up the kSZ power spectrum calculation with an
+emulator. `emul_sz` is not a declared dependency as it is not available on
+PyPI and can't be installed directly. If the package is not installed, `preion`
+falls back to the full physical kSZ computation. 
+Install it separately, into the same environment, from
+[git.ias.u-psud.fr/batman/emul_sz](https://git.ias.u-psud.fr/batman/emul_sz).
 
 ## Basic usage
 
+### Theory module
+
+Define a reionisation model and compute the corresponding observables
+
 ```python
 from preion.theory import Pee_model
-
-model = Pee_model(zre_h=7.0, dz_h=1.5, alpha0=3.7, kappa=0.10, run_camb=True)
+# define the reionisation model
+model = Pee_model(zre_h=7.0, dz_h=1.5, alpha0=3.7, kappa=0.10)
+# derive observables
 tau_ps = model.get_tau(ells=[100, 500, 1000], signal='both', Dells=True)
+ksz_ps = model.get_ksz(ells=[3000], signal='both', Dells=True)
+bb_ps = model.get_B_modes(ells=[100, 500, 1000], Dells=True)
+p21 = model.get_p21(np.logspace(-2, 0, 100), z=9.)
 ```
+
+### Running and reading an MCMC forecast
+
+The package can also be used to produce mock data points and fit them with the model.
+
+1. Generate mock data points for $C_\ell^{\tau\tau}$, $C_\ell^\text{kSZ}$ and $C_\ell^{BB}$ given a reionisation model:
 
 ```python
 from preion.forecast.datapoints import make_datapoints
 
 tau_ps, ksz_ps, bb_ps, cov_tau, cov_ksz, cov_bb = make_datapoints(
     theta=[7.0, 1.5, 3.7, 0.10],
-    telescopes=None,  # cosmic-variance-limited
+    telescopes=['CMB-S4-LAT', 'CMB-S4-LAT', 'CMB-S4-SAT'],
     ells=[tau_ells, ksz_ells, bb_ells],
 )
 ```
 
-### Running and reading an MCMC forecast
+The specs corresponding, e.g., to `CMB-S4-LAT` are defined in `preion.parameters`.
 
-Both the run and the read-back step are driven by the same YAML config, so
-they always agree on parameters and output paths — see
-`configs/cv_limited_new.yaml` for the schema and defaults (label, `theta_true`,
-`niterations`/`nwalkers`, telescopes, ell grids, `output_dir`, ...).
+2. Run the forecast with `emcee`
 
 ```bash
 preion-run-mcmc configs/cv_limited_new.yaml --data tau
+```
+
+`preion-run-mcmc` writes mock data to `{output_dir}/data/` (if it is not pre-existing) and the emcee
+chain to `{output_dir}/backends/`. 
+
+3. Read and analyse the chains with `arviz`
+
+```bash
 preion-read-mcmc configs/cv_limited_new.yaml --data tau --save-figures
 ```
 
-`preion-run-mcmc` writes mock data to `{output_dir}/data/` and the emcee
-chain to `{output_dir}/backends/`. `preion-read-mcmc` reads both back, prints
+`preion-read-mcmc` reads the backends, prints
 convergence diagnostics (autocorrelation time, burn-in, Gelman-Rubin R-hat)
 and a bias/error summary table, and (with `--save-figures`) writes corner,
-trace, and posterior-predictive plots to `{output_dir}/figures/`.
+trace, and triangle plots to `{output_dir}/figures/`.
+
+
+Both the run and the read-back step are driven by the same YAML config, so
+they always agree on parameters and output paths: see
+`configs/cv_limited_new.yaml` for an example.
 
 See `notebooks/theory_tutorial.ipynb` and `notebooks/forecast_tutorial.ipynb`
 for worked, end-to-end examples of both halves of the package.
