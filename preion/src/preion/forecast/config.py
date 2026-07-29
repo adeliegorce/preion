@@ -79,25 +79,50 @@ def run_label(cfg, data=None):
     return f"{label}_{data}"
 
 
+def log_path(cfg):
+    """Resolve the path to the logfile `setup_logging` writes to for `cfg`."""
+    return os.path.abspath(os.path.join(cfg["output_dir"], f"{cfg['label']}_{cfg['data']}.log"))
+
+
+def truncate_log_at_marker(cfg, marker):
+    """If the logfile for `cfg` already exists and contains a line with
+    `marker`, rewrite it to keep only the lines before the first such line
+    (dropping that line and everything written after it in a previous run).
+    No-op if the file doesn't exist or doesn't contain `marker`. Must be
+    called before `setup_logging` opens its FileHandler on the same path,
+    otherwise the handler's open file position won't reflect the rewrite.
+    """
+    path = log_path(cfg)
+    if not os.path.exists(path):
+        return
+    with open(path) as f:
+        lines = f.readlines()
+    for i, line in enumerate(lines):
+        if marker in line:
+            with open(path, "w") as f:
+                f.writelines(lines[:i])
+            return
+
+
 def setup_logging(cfg):
     """Configure the shared "preion.forecast" logger to write plain-text
-    messages to {output_dir}/{label}.log instead of the console. Safe to
-    call more than once for the same cfg (e.g. get_or_make_datapoints then
+    messages to {output_dir}/{label}_{data}.log instead of the console. Safe
+    to call more than once for the same cfg (e.g. get_or_make_datapoints then
     run_mcmc in the same process) — only reconfigures if the resolved path
     actually changes, so a second call doesn't truncate what the first
     call already wrote.
     """
     os.makedirs(cfg["output_dir"], exist_ok=True)
-    log_path = os.path.abspath(os.path.join(cfg["output_dir"], f"{cfg['label']}.log"))
+    path = log_path(cfg)
     logger = logging.getLogger("preion.forecast")
     for h in logger.handlers:
-        if isinstance(h, logging.FileHandler) and os.path.abspath(h.baseFilename) == log_path:
+        if isinstance(h, logging.FileHandler) and os.path.abspath(h.baseFilename) == path:
             return logger
     for h in list(logger.handlers):
         logger.removeHandler(h)
         h.close()
     mode = "w" if cfg["overwrite"] else "a"
-    handler = logging.FileHandler(log_path, mode=mode)
+    handler = logging.FileHandler(path, mode=mode)
     handler.setFormatter(logging.Formatter("%(message)s"))
     logger.addHandler(handler)
     logger.setLevel(logging.INFO)

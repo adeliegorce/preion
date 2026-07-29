@@ -135,10 +135,11 @@ and a bias/error summary table, and (with `--save-figures`) writes corner,
 trace, and triangle plots to `{output_dir}/figures/`.
 
 Both `preion-run-mcmc` and `preion-read-mcmc` write their status/timing/diagnostic
-messages to a logfile at `{output_dir}/{label}.log` instead of the console
-(`label` is the YAML config's `label` field), so the terminal only shows the
-`emcee`/`tqdm` progress bar (if `progress: true` in the config). The logfile
-is truncated on each run if `overwrite: true`, appended to otherwise.
+messages to a logfile at `{output_dir}/{label}_{data}.log` instead of the console
+(`label` and `data` are the YAML config's `label` and `data` fields), so the
+terminal only shows the `emcee`/`tqdm` progress bar (if `progress: true` in the
+config). The logfile is truncated on each run if `overwrite: true`, appended to
+otherwise.
 
 
 Both the run and the read-back step are driven by the same YAML config, so

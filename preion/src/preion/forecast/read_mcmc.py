@@ -8,7 +8,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import corner
 
-from .config import load_config, run_label, setup_logging
+from .config import load_config, run_label, setup_logging, truncate_log_at_marker
 
 PARAM_NAMES = ["zre", "dz", "alpha0", "kappa"]
 
@@ -182,6 +182,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
 
     cfg = load_config(args.config)
+    truncate_log_at_marker(cfg, "Results of chain analysis:")
     setup_logging(cfg)
 
     ells, data, cov = load_mock_data(cfg)
