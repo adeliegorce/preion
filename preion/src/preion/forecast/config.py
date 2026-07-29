@@ -6,58 +6,65 @@ import yaml
 
 VALID_DATA = ("bb", "ksz", "tau", "all")
 
-_DEFAULTS = {
-    "label": "cv_limited_new",
-    "data": "all",
-    "theta_true": [7.0, 1.5, 3.7, 0.10],
-    "log_kappa": True,
-    "niterations": 100000,
-    "nwalkers": 8,
-    "fsky": 1.0,
-    "use_ksz_emulator": "RF",
-    "overwrite": True,
-    "plot": False,
-    "progress": False,
-    "telescopes": None,
-    "output_dir": ".",
-    "ells": {
-        "tau": {"start": 100, "stop": 5000, "step": 100},
-        "ksz": {"start": 1000, "stop": 8000, "step": 500},
-        "bb": {"start": 10, "stop": 1000, "num": 50},
-    },
-}
+REQUIRED_KEYS = (
+    "label", "data", "theta_true", "log_kappa", "niterations", "nwalkers",
+    "fsky", "use_ksz_emulator", "overwrite", "plot", "progress",
+    "telescopes", "output_dir", "ells",
+)
+
+_ELLS_NAMES = ("tau", "ksz", "bb")
+_VALID_ELLS_KEYSETS = (
+    frozenset({"start", "stop", "step"}),
+    frozenset({"start", "stop", "num"}),
+)
 
 
-def _deep_merge(defaults, overrides):
-    merged = dict(defaults)
-    for key, value in overrides.items():
-        if isinstance(value, dict) and isinstance(merged.get(key), dict):
-            merged[key] = _deep_merge(merged[key], value)
-        else:
-            merged[key] = value
-    return merged
+def _validate_config(cfg):
+    """Check that `cfg` (as loaded from YAML) explicitly has every key in
+    REQUIRED_KEYS (raising KeyError otherwise) and that each of
+    ells.tau/ksz/bb has exactly the keys {start, stop, step} (for
+    np.arange-style binning) or {start, stop, num} (for np.linspace-style
+    binning), raising ValueError for any other combination (e.g. a typo'd or
+    mixed key set)."""
+    for key in REQUIRED_KEYS:
+        if key not in cfg:
+            raise KeyError(f"Missing required config key: {key!r}")
+    for name in _ELLS_NAMES:
+        if name not in cfg["ells"]:
+            raise KeyError(f"Missing required config key: 'ells.{name}'")
+        keys = frozenset(cfg["ells"][name].keys())
+        if keys not in _VALID_ELLS_KEYSETS:
+            raise ValueError(
+                f"ells.{name} must have keys {{start, stop, step}} or "
+                f"{{start, stop, num}}, got {sorted(keys)}."
+            )
 
 
 def load_config(path):
-    """Load a run config, filling in defaults that mirror the values that used
-    to be hardcoded in run_mcmc_cv_limited_new.py."""
+    """Load a run config. Every key in REQUIRED_KEYS must be explicitly
+    present in the YAML file (raises KeyError otherwise, e.g. for a missing
+    field) -- there is no defaulting/merging. See `_validate_config` for the
+    additional check on the `ells` sub-dicts."""
     with open(path) as f:
-        user_cfg = yaml.safe_load(f) or {}
-    cfg = _deep_merge(_DEFAULTS, user_cfg)
+        cfg = yaml.safe_load(f) or {}
+    _validate_config(cfg)
     if cfg["data"] not in VALID_DATA:
         raise ValueError(f"Invalid data option: {cfg['data']!r}, must be one of {VALID_DATA}.")
     return cfg
 
 
 def build_ells(cfg):
-    """Build the [ells_tau, ells_ksz, ells_bb] arrays from cfg['ells']."""
-    tau_spec = cfg["ells"]["tau"]
-    ksz_spec = cfg["ells"]["ksz"]
-    bb_spec = cfg["ells"]["bb"]
-    ells_tau = np.arange(tau_spec["start"], tau_spec["stop"], step=tau_spec["step"])
-    ells_ksz = np.arange(ksz_spec["start"], ksz_spec["stop"], step=ksz_spec["step"])
-    ells_bb = np.linspace(bb_spec["start"], bb_spec["stop"], bb_spec["num"])
-    return [ells_tau, ells_ksz, ells_bb]
+    """Build the [ells_tau, ells_ksz, ells_bb] arrays from cfg['ells']. Each
+    of tau/ksz/bb is built with np.arange if its spec has a 'step' key, or
+    np.linspace if it has a 'num' key (as validated by `_validate_config`)."""
+    ells = []
+    for name in _ELLS_NAMES:
+        spec = cfg["ells"][name]
+        if "step" in spec:
+            ells.append(np.arange(spec["start"], spec["stop"], step=spec["step"]))
+        else:
+            ells.append(np.linspace(spec["start"], spec["stop"], spec["num"]))
+    return ells
 
 
 def run_label(cfg, data=None):

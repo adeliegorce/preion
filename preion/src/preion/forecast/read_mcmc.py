@@ -73,6 +73,8 @@ def convergence_diagnostics(sampler):
         "converged": converged,
         "burnin": burnin,
         "rhat": rhat,
+        "nwalkers": samples.shape[1],
+        "nsteps": samples.shape[0],
     }
 
 
@@ -185,6 +187,8 @@ def main(argv=None):
     ells, data, cov = load_mock_data(cfg)
     sampler = load_chain(cfg)
     diagnostics = convergence_diagnostics(sampler)
+    logger.info("\nResults of chain analysis:")
+    logger.info(f"Ran {diagnostics['nwalkers']} walkers for {diagnostics['nsteps']} steps each.")
     logger.info(f"Auto-correlation time: {diagnostics['endtau']:.2f}. Converged: {diagnostics['converged']}.")
     logger.info(f"burnin = {diagnostics['burnin']} ({diagnostics['burnin']/sampler.iteration:.1%})")
     logger.info("Gelman-Rubin R-hat:")
