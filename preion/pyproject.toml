@@ -21,6 +21,7 @@ forecast = [
     "arviz",
     "tqdm",
     "pyyaml",
+    "corner",
     "plancklens @ git+https://github.com/carronj/plancklens",
 ]
 test = ["pytest"]

@@ -5,8 +5,9 @@ import os
 import arviz as az
 import emcee
 import numpy as np
+import matplotlib.pyplot as plt
+import corner
 
-from ..plotting import corner as _corner_plot
 from .config import load_config, run_label, setup_logging
 
 PARAM_NAMES = ["zre", "dz", "alpha0", "kappa"]
@@ -87,35 +88,39 @@ def get_flat_samples(sampler, burnin, tau_prior=False):
 
 
 def plot_corner(flatsamples, truths, labels, **kwargs):
-    fig = _corner_plot(
+    fig = corner.corner(
         flatsamples, truths=truths, labels=labels, truth_color="k",
-        sigmas=[1, 2], plot_datapoints=False, lw=2., smooth=1., **kwargs,
+        sigmas=[1, 2], plot_datapoints=False, lw=2.,
+        show_titles=True, **kwargs,
     )
     fig.tight_layout()
     return fig
 
 
-def plot_trace(sampler, paramnames, burnin):
-    import matplotlib.pyplot as plt
+def plot_trace(sampler, truths, labels, burnin):
 
     samples = sampler.get_chain(flat=False)
     logps = sampler.get_log_prob(flat=False)
     ndim = samples.shape[-1]
+    nwalkers = samples.shape[1]
     fig, axes = plt.subplots(ndim + 1, 1, figsize=(8, 2 * (ndim + 1)), sharex=True)
     for i in range(ndim):
-        axes[i].plot(samples[:, :, i], alpha=0.6, lw=0.5)
+        for j in range(nwalkers):
+            axes[i].plot(samples[:, j, i], alpha=0.6, lw=0.5, color=f'C{j}')
         axes[i].axvline(burnin, color="k", ls="--", lw=1.)
-        axes[i].set_ylabel(paramnames[i])
-    axes[-1].plot(logps, alpha=0.6, lw=0.5)
+        axes[i].set_ylabel(labels[i])
+        axes[i].axhline(truths[i], color='k', ls=':', lw=1.5)
+    for j in range(nwalkers):
+        axes[-1].plot(logps[:, j], alpha=0.6, lw=0.5, color=f'C{j}', label=f'Walker {j}')
     axes[-1].axvline(burnin, color="k", ls="--", lw=1.)
     axes[-1].set_ylabel("log prob")
     axes[-1].set_xlabel("step")
+    axes[-1].legend(ncol=2, frameon=False)
     fig.tight_layout()
     return fig
 
 
-def plot_posterior_predictive(sampler, ells, data, cov, burnin, n_draws=500):
-    import matplotlib.pyplot as plt
+def plot_models(sampler, ells, data, cov, burnin, n_draws=500):
 
     ells_tau, ells_ksz, ells_bb = ells
     tau_models = sampler.get_blobs(flat=True, discard=burnin)["tau_models"]
@@ -132,7 +137,7 @@ def plot_posterior_predictive(sampler, ells, data, cov, burnin, n_draws=500):
         [data["tau"], data["ksz"], data["bb"]],
         [cov["tau"], cov["ksz"], cov["bb"]],
         [tau_models, ksz_models, bb_models],
-        ["Optical depth", "kSZ signal", "B-modes"],
+        ["Optical depth", "kSZ signal", r"$B$-modes"],
     ):
         for i in idx:
             ax.plot(ells_obs, models[i], color="C0", alpha=0.05, lw=0.5)
@@ -141,6 +146,8 @@ def plot_posterior_predictive(sampler, ells, data, cov, burnin, n_draws=500):
             lw=0., elinewidth=0.8, marker='.', capsize=2., color='k')
         ax.set_title(title)
         ax.set_xlabel(r"Multipole $\ell$")
+        ax.grid()
+    axes[0].set_ylabel(r'$\mathcal{D}_\ell$ [$\mu\mathrm{K}^2$]')
     fig.tight_layout()
     return fig
 
@@ -188,9 +195,9 @@ def main(argv=None):
     labels = _theta_labels(cfg)
     summarize(flatsamples, truths, PARAM_NAMES)
 
-    fig_corner = plot_corner(flatsamples, truths, labels)
-    fig_trace = plot_trace(sampler, PARAM_NAMES, diagnostics["burnin"])
-    fig_pp = plot_posterior_predictive(sampler, ells, data, cov, diagnostics["burnin"])
+    fig_corner = plot_corner(flatsamples, truths, labels, color='C0', smooth=1.)
+    fig_trace = plot_trace(sampler, truths, labels, diagnostics["burnin"])
+    fig_pp = plot_models(sampler, ells, data, cov, diagnostics["burnin"])
 
     if args.save_figures:
         figure_dir = os.path.join(cfg["output_dir"], "figures")
@@ -198,7 +205,7 @@ def main(argv=None):
         label = run_label(cfg)
         fig_corner.savefig(os.path.join(figure_dir, f"mcmc_{label}_corner.png"), dpi=220)
         fig_trace.savefig(os.path.join(figure_dir, f"mcmc_{label}_trace.png"), dpi=220)
-        fig_pp.savefig(os.path.join(figure_dir, f"mcmc_{label}_posterior_predictive.png"), dpi=220)
+        fig_pp.savefig(os.path.join(figure_dir, f"mcmc_{label}_models.png"), dpi=220)
 
 
 if __name__ == "__main__":

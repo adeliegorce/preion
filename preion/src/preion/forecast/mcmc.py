@@ -11,7 +11,6 @@ from astropy import cosmology
 
 from ..parameters import props, telescope_specs
 from ..theory import Pee_model
-from ..plotting import corner as _corner_plot
 from .config import VALID_DATA, build_ells, load_config, run_label, setup_logging
 from .datapoints import load_datapoints, make_datapoints
 
