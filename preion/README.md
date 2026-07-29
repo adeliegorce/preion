@@ -116,15 +116,20 @@ preion-run-mcmc configs/cv_limited_new.yaml --data tau
 ```
 
 `preion-run-mcmc` writes mock data to `{output_dir}/data/` (if it is not pre-existing) and the emcee
-chain to `{output_dir}/backends/`. 
+chain to `{output_dir}/backends/`. The `--data` flag only overrides the config in memory for that run;
+it is not written back to the YAML file.
 
 3. Read and analyse the chains with `arviz`
 
 ```bash
-preion-read-mcmc configs/cv_limited_new.yaml --data tau --save-figures
+preion-read-mcmc configs/cv_limited_new.yaml --save-figures
 ```
 
-`preion-read-mcmc` reads the backends, prints
+Unlike `preion-run-mcmc`, `preion-read-mcmc` has no `--data` override: it reads the `data` field
+directly from the YAML config to know which chain variant to load, so that field must match whatever
+`data` (config field or `--data` override) was used to produce the chain — e.g. if you ran with
+`--data tau` above, set `data: tau` in the config (or use a separate config per variant) before
+reading it back. `preion-read-mcmc` reads the backends, prints
 convergence diagnostics (autocorrelation time, burn-in, Gelman-Rubin R-hat)
 and a bias/error summary table, and (with `--save-figures`) writes corner,
 trace, and triangle plots to `{output_dir}/figures/`.
