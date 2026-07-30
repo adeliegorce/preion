@@ -134,11 +134,27 @@ preion-read-mcmc configs/cv_limited_new.yaml --save-figures
 `preion-read-mcmc` reads the backends, prints
 convergence diagnostics (autocorrelation time, burn-in, Gelman-Rubin R-hat)
 and a bias/error summary table, and (with `--save-figures`) writes corner,
-trace, and triangle plots to `{output_dir}/figures/`.
+trace, and triangle plots to `{output_dir}/figures/`. Each figure is titled
+with the config's `title` field, if set (falling back to its `run_label`,
+e.g. `cv_limited_tau_only`, otherwise).
+
+4. Compare several chains on one overlaid corner plot
+
+```bash
+preion-compare-mcmc config1.yaml config2.yaml config3.yaml -o comparison_corner.png
+```
+
+`preion-compare-mcmc` takes two or more already-run configs, loads each
+chain, and overlays their corner plots on a single figure, saved to `-o/--output` (default `mcmc_comparison_corner.png`). The legend label for each chain is that
+config's `title` field (or its `run_label` if `title` isn't set). All
+configs must agree on `log_kappa` (kappa vs log-kappa axes aren't
+comparable); a mismatched `theta_true` between configs is allowed but logs a
+warning, since the truth markers are drawn from the first config only.
 
 Both `preion-run-mcmc` and `preion-read-mcmc` write their status/timing/diagnostic
 messages to a logfile at `{output_dir}/{label}_{data}.log` instead of the console
-(`label` and `data` are defined in the YAML config). 
+(`label` and `data` are defined in the YAML config). `preion-compare-mcmc` logs
+to the console instead, since it spans multiple configs/output directories.
 
 
 Both the run and the read-back step are driven by a YAML config to define the model parameters, forecast/MCMC options and output paths: see

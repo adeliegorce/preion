@@ -5,10 +5,11 @@ import os
 import arviz as az
 import emcee
 import numpy as np
+import matplotlib.lines as mlines
 import matplotlib.pyplot as plt
 import corner
 
-from .config import load_config, run_label, setup_logging, truncate_log_at_marker
+from .config import cfg_title, load_config, run_label, setup_logging, truncate_log_at_marker
 
 PARAM_NAMES = ["zre", "dz", "alpha0", "kappa"]
 
@@ -89,17 +90,41 @@ def get_flat_samples(sampler, burnin, tau_prior=False):
     return flatsamples, logps
 
 
-def plot_corner(flatsamples, truths, labels, **kwargs):
+def plot_corner(flatsamples, truths, labels, title=None, **kwargs):
     fig = corner.corner(
         flatsamples, truths=truths, labels=labels, truth_color="k",
         sigmas=[1, 2], plot_datapoints=False, lw=2.,
         show_titles=True, **kwargs,
     )
+    if title is not None:
+        fig.suptitle(title)
     fig.tight_layout()
     return fig
 
 
-def plot_trace(sampler, truths, labels, burnin):
+def plot_corner_comparison(chains, labels, chain_labels, truths=None, colors=None, **kwargs):
+    """Overlay N sets of flat samples on one corner plot, one colour per
+    chain, with a legend built from `chain_labels`. `truths` (if given) is
+    only drawn once, on the first chain, since corner.corner draws truth
+    lines unconditionally on every call and would otherwise duplicate them."""
+    colors = colors if colors is not None else [f"C{i}" for i in range(len(chains))]
+    fig = None
+    for i, (chain, color) in enumerate(zip(chains, colors)):
+        fig = corner.corner(
+            chain, fig=fig, color=color, labels=labels,
+            truths=truths if i == 0 else None, truth_color="k",
+            levels=[0.864], plot_datapoints=False,
+            plot_density=False, no_fill_contours=True, lw=2.,
+            smooth=1., smooth1d=1.,
+            **kwargs,
+        )
+    handles = [mlines.Line2D([], [], color=c, label=name) for c, name in zip(colors, chain_labels)]
+    fig.legend(handles=handles, loc=(0.6, 0.75), frameon=False)
+    fig.tight_layout()
+    return fig
+
+
+def plot_trace(sampler, truths, labels, burnin, title=None):
 
     samples = sampler.get_chain(flat=False)
     logps = sampler.get_log_prob(flat=False)
@@ -118,11 +143,13 @@ def plot_trace(sampler, truths, labels, burnin):
     axes[-1].set_ylabel("log prob")
     axes[-1].set_xlabel("step")
     axes[-1].legend(ncol=2, frameon=False)
+    if title is not None:
+        fig.suptitle(title)
     fig.tight_layout()
     return fig
 
 
-def plot_models(sampler, ells, data, cov, burnin, n_draws=500):
+def plot_models(sampler, ells, data, cov, burnin, n_draws=500, title=None):
 
     ells_tau, ells_ksz, ells_bb = ells
     tau_models = sampler.get_blobs(flat=True, discard=burnin)["tau_models"]
@@ -133,7 +160,7 @@ def plot_models(sampler, ells, data, cov, burnin, n_draws=500):
     idx = rng.choice(tau_models.shape[0], size=min(n_draws, tau_models.shape[0]), replace=False)
 
     fig, axes = plt.subplots(1, 3, figsize=(14, 4))
-    for ax, ells_obs, obs_data, obs_cov, models, title in zip(
+    for ax, ells_obs, obs_data, obs_cov, models, panel_title in zip(
         axes,
         [ells_tau, ells_ksz, ells_bb],
         [data["tau"], data["ksz"], data["bb"]],
@@ -146,10 +173,12 @@ def plot_models(sampler, ells, data, cov, burnin, n_draws=500):
         ax.errorbar(
             ells_obs, obs_data, yerr=np.sqrt(np.diag(obs_cov)),
             lw=0., elinewidth=0.8, marker='.', capsize=2., color='k')
-        ax.set_title(title)
+        ax.set_title(panel_title)
         ax.set_xlabel(r"Multipole $\ell$")
         ax.grid()
     axes[0].set_ylabel(r'$\mathcal{D}_\ell$ [$\mu\mathrm{K}^2$]')
+    if title is not None:
+        fig.suptitle(title)
     fig.tight_layout()
     return fig
 
@@ -200,9 +229,10 @@ def main(argv=None):
     labels = _theta_labels(cfg)
     summarize(flatsamples, truths, PARAM_NAMES)
 
-    fig_corner = plot_corner(flatsamples, truths, labels, color='C0', smooth=1.)
-    fig_trace = plot_trace(sampler, truths, labels, diagnostics["burnin"])
-    fig_pp = plot_models(sampler, ells, data, cov, diagnostics["burnin"])
+    title = cfg_title(cfg)
+    fig_corner = plot_corner(flatsamples, truths, labels, title=title, color='C0', smooth=1.)
+    fig_trace = plot_trace(sampler, truths, labels, diagnostics["burnin"], title=title)
+    fig_pp = plot_models(sampler, ells, data, cov, diagnostics["burnin"], title=title)
 
     if args.save_figures:
         figure_dir = os.path.join(cfg["output_dir"], "figures")
@@ -211,6 +241,50 @@ def main(argv=None):
         fig_corner.savefig(os.path.join(figure_dir, f"mcmc_{label}_corner.png"), dpi=220)
         fig_trace.savefig(os.path.join(figure_dir, f"mcmc_{label}_trace.png"), dpi=220)
         fig_pp.savefig(os.path.join(figure_dir, f"mcmc_{label}_models.png"), dpi=220)
+
+
+def compare_main(argv=None):
+    parser = argparse.ArgumentParser(
+        description="Overlay corner plots from multiple preion-run-mcmc chains.")
+    parser.add_argument("configs", nargs="+",
+                         help="Paths to two or more YAML run configs, each already run with preion-run-mcmc.")
+    parser.add_argument("-o", "--output", default="mcmc_comparison_corner.png",
+                         help="Filename for the saved overlaid corner plot (default: %(default)s).")
+    args = parser.parse_args(argv)
+
+    if len(args.configs) < 2:
+        parser.error("give at least 2 config files to compare.")
+
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
+
+    cfgs = [load_config(path) for path in args.configs]
+    ref_cfg = cfgs[0]
+    for cfg in cfgs[1:]:
+        if cfg["log_kappa"] != ref_cfg["log_kappa"]:
+            raise ValueError(
+                "All configs must agree on 'log_kappa' (kappa vs log-kappa axes aren't comparable)."
+            )
+        if list(cfg["theta_true"]) != list(ref_cfg["theta_true"]):
+            logger.info(f"Warning: theta_true differs from {args.configs[0]} for {cfg['label']}; "
+                        "using the first config's truths for the overlay.")
+
+    truths = _theta_true(ref_cfg)
+    theta_labels = _theta_labels(ref_cfg)
+    chain_labels = [cfg_title(cfg) for cfg in cfgs]
+    flatsamples_list = []
+    for cfg, name in zip(cfgs, chain_labels):
+        sampler = load_chain(cfg)
+        diagnostics = convergence_diagnostics(sampler)
+        logger.info(f"{name}: converged={diagnostics['converged']}, "
+                    f"burnin={diagnostics['burnin']} ({diagnostics['burnin']/sampler.iteration:.1%})")
+        flatsamples, _ = get_flat_samples(sampler, diagnostics["burnin"])
+        flatsamples_list.append(flatsamples)
+
+    fig = plot_corner_comparison(flatsamples_list[::-1], theta_labels, chain_labels[::-1], truths=truths)
+
+    os.makedirs(os.path.dirname(os.path.abspath(args.output)), exist_ok=True)
+    fig.savefig(args.output, dpi=220)
+    logger.info(f"Saved to {args.output}")
 
 
 if __name__ == "__main__":

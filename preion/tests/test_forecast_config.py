@@ -4,7 +4,7 @@ import yaml
 
 pytest.importorskip("preion.forecast.config")
 
-from preion.forecast.config import build_ells, load_config, run_label
+from preion.forecast.config import build_ells, cfg_title, load_config, run_label
 
 EXAMPLE_CONFIG = "configs/cv_limited_new.yaml"
 
@@ -107,3 +107,16 @@ def test_run_label(cfg, data, expected):
 def test_run_label_rejects_bad_data(cfg):
     with pytest.raises(ValueError):
         run_label(cfg, "bogus")
+
+
+def test_cfg_title_uses_title_when_set(cfg):
+    assert cfg["title"] == "CV-limited (new)"
+    assert cfg_title(cfg) == "CV-limited (new)"
+
+
+def test_cfg_title_falls_back_to_run_label(tmp_path, full_cfg_dict):
+    del full_cfg_dict["title"]
+    ok = tmp_path / "no_title.yaml"
+    ok.write_text(yaml.dump(full_cfg_dict))
+    cfg = load_config(ok)
+    assert cfg_title(cfg) == run_label(cfg)

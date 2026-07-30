@@ -79,6 +79,13 @@ def run_label(cfg, data=None):
     return f"{label}_{data}"
 
 
+def cfg_title(cfg):
+    """Return cfg['title'] if set, else fall back to run_label(cfg). 'title'
+    is an optional config key (not in REQUIRED_KEYS) used to label figures/
+    legend entries in preion-read-mcmc and preion-compare-mcmc."""
+    return cfg.get("title", run_label(cfg))
+
+
 def log_path(cfg):
     """Resolve the path to the logfile `setup_logging` writes to for `cfg`."""
     return os.path.abspath(os.path.join(cfg["output_dir"], f"{cfg['label']}_{cfg['data']}.log"))

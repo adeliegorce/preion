@@ -29,6 +29,7 @@ test = ["pytest"]
 [project.scripts]
 preion-run-mcmc = "preion.forecast.mcmc:main"
 preion-read-mcmc = "preion.forecast.read_mcmc:main"
+preion-compare-mcmc = "preion.forecast.read_mcmc:compare_main"
 
 [build-system]
 requires = ["setuptools>=61"]

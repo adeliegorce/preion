@@ -11,7 +11,7 @@ from astropy import cosmology
 
 from ..parameters import props, telescope_specs
 from ..theory import Pee_model
-from .config import VALID_DATA, build_ells, load_config, run_label, setup_logging
+from .config import build_ells, load_config, run_label, setup_logging
 from .datapoints import load_datapoints, make_datapoints
 
 logger = logging.getLogger(__name__)
@@ -283,14 +283,11 @@ def run_mcmc(datapoints, cfg):
 def main(argv=None):
     parser = argparse.ArgumentParser(
         description="Run the kSZ/tau/BB MCMC forecast (Pee_model) from a YAML config.")
-    parser.add_argument("config", help="Path to a YAML run config (see configs/cv_limited_new.yaml).")
-    parser.add_argument("--data", choices=VALID_DATA, default=None,
-                         help="Override the config's 'data' field (bb/ksz/tau/all).")
+    parser.add_argument("config", help="Path to a YAML run config (see configs/cv_limited_new.yaml). "
+                         "Its 'data' field (bb/ksz/tau/all) selects which data the MCMC fits.")
     args = parser.parse_args(argv)
 
     cfg = load_config(args.config)
-    if args.data is not None:
-        cfg["data"] = args.data
 
     datapoints = get_or_make_datapoints(cfg)
     run_mcmc(datapoints, cfg)
