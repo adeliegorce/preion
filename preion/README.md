@@ -10,12 +10,9 @@ with `emcee` and reading back the resulting chains.
 `preion` has two install flavours:
 
 - **Theory only** — just `preion.theory.Pee_model` and its
-  `numpy`/`scipy`/`astropy`/`camb` dependencies. No compiled extensions, no
-  toolchain required.
-- **Theory + forecast** — adds the `forecast` extra (`emcee`, `arviz`,
-  `healpy`, `plancklens`, ...) needed for the kSZ/tau/BB MCMC pipeline.
-  `plancklens` has compiled extensions, so this flavour needs a C/Fortran
-  toolchain (gcc, gfortran) on `PATH`.
+  `numpy`/`scipy`/`astropy`/`camb` dependencies. 
+- **Theory + forecast** — adds the `forecast` module (including `emcee`, `arviz`, `healpy`, `plancklens`, ...) needed for the MCMC pipeline.
+  `plancklens` requires a C/Fortran toolchain (gcc, gfortran) on `PATH`.
 
 ### With `uv` (recommended)
 
@@ -25,7 +22,7 @@ Theory only:
 cd preion
 uv venv --python 3.11   # any Python >=3.9
 source .venv/bin/activate
-uv pip install -e ".[test]"
+uv pip install -e .
 ```
 
 Theory + forecast:
@@ -35,7 +32,15 @@ cd preion
 uv venv --python 3.11   # any Python >=3.9
 source .venv/bin/activate
 uv pip install "numpy<2"  # for plancklens
-uv pip install --no-build-isolation-package plancklens -e ".[forecast,test]"
+uv pip install --no-build-isolation-package plancklens -e ".[forecast]"
+```
+
+Developper
+```bash
+cd preion
+uv venv --python 3.11   # any Python >=3.9
+source .venv/bin/activate
+uv pip install -e ".[test]"
 ```
 
 ### With conda
@@ -91,6 +96,8 @@ bb_ps = model.get_B_modes(ells=[100, 500, 1000], Dells=True)
 p21 = model.get_p21(np.logspace(-2, 0, 100), z=9.)
 ```
 
+You can find more examples at `notebooks/theory_tutorial.ipynb`.
+
 ### Running and reading an MCMC forecast
 
 The package can also be used to produce mock data points and fit them with the model.
@@ -112,12 +119,11 @@ The specs corresponding, e.g., to `CMB-S4-LAT` are defined in `preion.parameters
 2. Run the forecast with `emcee`
 
 ```bash
-preion-run-mcmc configs/cv_limited_new.yaml --data tau
+preion-run-mcmc configs/cv_limited_new.yaml
 ```
 
 `preion-run-mcmc` writes mock data to `{output_dir}/data/` (if it is not pre-existing) and the emcee
-chain to `{output_dir}/backends/`. The `--data` flag only overrides the config in memory for that run;
-it is not written back to the YAML file.
+chain to `{output_dir}/backends/`. 
 
 3. Read and analyse the chains with `arviz`
 
@@ -125,29 +131,20 @@ it is not written back to the YAML file.
 preion-read-mcmc configs/cv_limited_new.yaml --save-figures
 ```
 
-Unlike `preion-run-mcmc`, `preion-read-mcmc` has no `--data` override: it reads the `data` field
-directly from the YAML config to know which chain variant to load, so that field must match whatever
-`data` (config field or `--data` override) was used to produce the chain — e.g. if you ran with
-`--data tau` above, set `data: tau` in the config (or use a separate config per variant) before
-reading it back. `preion-read-mcmc` reads the backends, prints
+`preion-read-mcmc` reads the backends, prints
 convergence diagnostics (autocorrelation time, burn-in, Gelman-Rubin R-hat)
 and a bias/error summary table, and (with `--save-figures`) writes corner,
 trace, and triangle plots to `{output_dir}/figures/`.
 
 Both `preion-run-mcmc` and `preion-read-mcmc` write their status/timing/diagnostic
 messages to a logfile at `{output_dir}/{label}_{data}.log` instead of the console
-(`label` and `data` are the YAML config's `label` and `data` fields), so the
-terminal only shows the `emcee`/`tqdm` progress bar (if `progress: true` in the
-config). The logfile is truncated on each run if `overwrite: true`, appended to
-otherwise.
+(`label` and `data` are defined in the YAML config). 
 
 
-Both the run and the read-back step are driven by the same YAML config, so
-they always agree on parameters and output paths: see
-`configs/cv_limited_new.yaml` for an example.
+Both the run and the read-back step are driven by a YAML config to define the model parameters, forecast/MCMC options and output paths: see
+`configs/config_tutorial_mcmc.yaml` for an example.
 
-See `notebooks/theory_tutorial.ipynb` and `notebooks/forecast_tutorial.ipynb`
-for worked, end-to-end examples of both halves of the package.
+See `notebooks/forecast_tutorial.ipynb` for an example forecast.
 
 ## Tests
 
@@ -168,11 +165,10 @@ via CAMB); skip them with `pytest -m "not slow"` for a quick check.
 src/preion/
 ├── theory.py             # Pee_model: kSZ, tau-tau, 21cm, B-mode power spectra
 ├── parameters.py         # constants, telescope_specs
-├── plotting.py            # vendored corner-plot fork (originally triangleme2.py / Foreman-Mackey's corner)
 └── forecast/
-    ├── utils.py            # noise/statistics helpers + tau quadratic-estimator noise (plancklens-based)
-    ├── config.py          # shared YAML config loading + setup_logging (per-label logfile) for mcmc.py / read_mcmc.py
-    ├── datapoints.py      # make_datapoints: mock data + covariance generation
-    ├── mcmc.py             # get_or_make_datapoints, run_mcmc + `preion-run-mcmc` CLI
-    └── read_mcmc.py        # chain diagnostics/plots + `preion-read-mcmc` CLI
+    ├── utils.py            # noise/statistics helpers
+    ├── config.py           # shared YAML config loading 
+    ├── datapoints.py       # mock data + covariance generation
+    ├── mcmc.py             # run_mcmc + CLI
+    └── read_mcmc.py        # chain diagnostics/plots + CLI
 ```
