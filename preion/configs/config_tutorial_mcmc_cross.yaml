@@ -1,0 +1,54 @@
+# Example run config for preion-run-mcmc / preion-read-mcmc: tau x 21cm
+# cross-correlation forecast. Mirrors config_tutorial_mcmc_autos.yaml's
+# style; see that file for the auto (kSZ/tau/BB) equivalent.
+
+label: mcmc_tutorial_cross
+title: Tutorial cross forecast
+data: tau21             # one of: bb, ksz, tau, all, tau21
+
+theta_true: [7.0, 1.5, 3.7, 0.10]   # [zre, dz, alpha0, kappa]
+log_kappa: true
+
+niterations: 10
+nwalkers: 8
+
+fsky: 1.0                # unused for tau21 (fsky is derived from telescope_21), kept for schema uniformity
+use_ksz_emulator: false
+overwrite: true
+plot: false
+progress: true
+
+# For data: tau21, telescopes must be a 1-element list [tel_tau] -- the CMB
+# telescope used for the tau-tau reconstruction-noise piece of the
+# cross-covariance. There is no cosmic-variance-limited mode for the cross
+# case (telescopes: null is not allowed here), since the cross covariance
+# always needs a concrete tel_tau to size its multipole bins and tau-noise
+# curve.
+telescopes: [CMB-S4-LAT]
+
+# --- cross-observable-specific keys (required when data: tau21) ---
+telescope_21: hera        # 21cm telescope: hera | ska | mwa
+sensitivity_case: moderate  # moderate | optimistic
+# ska_array: aast          # required only when telescope_21: ska (aast | aa4)
+# n_fields: 3              # optional, e.g. for multi-field SKA forecasts (ska only)
+delta_nu: 100.0            # MHz, top-hat frequency-resolution window (0.0 = Dirac delta)
+z21: [7.0]                 # one or more 21cm-signal redshifts to forecast simultaneously
+
+# Optional priors (both null/absent by default, matching the auto case's
+# existing behaviour -- these are usable with any 'data' value, not just tau21):
+zend_prior: 4.5           # lower limit on z_end = zre - dz
+tau_prior: null           # or {sigma: 0.007} for a Gaussian prior on the model's tau
+
+output_dir: .
+
+# No 'ells' block by default: since 'telescopes' is set, the multipole grid
+# defaults to get_lbins("CMB-S4-LAT"). Uncomment to override it explicitly
+# (triggers a warning, since the override is easy to miss):
+# ells:
+#   tau: {start: 500, stop: 10000, step: 500}
+
+# lbin_edges: [500, 3500, 7000, 10000]   # optional override of the
+                                          # telescope-derived bin edges,
+                                          # independent of the 'ells' override above.
+
+# sensitivity_dir: /path/to/custom/sensitivity_21cm   # optional, defaults to the packaged data

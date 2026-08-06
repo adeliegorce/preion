@@ -1,8 +1,9 @@
-# Example run config for preion-run-mcmc / preion-read-mcmc.
-# Mirrors the defaults that used to be hardcoded in
-# forecast_autos/run_mcmc_cv_limited_new.py.
+# Example run config for preion-run-mcmc / preion-read-mcmc: auto
+# (kSZ/tau/BB) forecast. Mirrors the defaults that used to be hardcoded in
+# forecast_autos/run_mcmc_cv_limited_new.py. See config_tutorial_mcmc_cross.yaml
+# for the tau x 21cm cross-correlation equivalent.
 
-label: mcmc_tutorial
+label: mcmc_tutorial_autos
 title: Tutorial forecast
 data: all              # one of: bb, ksz, tau, all
 

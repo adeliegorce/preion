@@ -1667,40 +1667,41 @@ class Pee_model:
             * (1. + zlin) ** 2
             / cos.H(zlin).si
             / cos.comoving_distance(zlin)**2
-            * np.exp(-2. * self.tau_z_integ[None, :])
+            * np.exp(-2. * self.xe2tau(zlin)[None, :])
             * [Pbb_zlin - self.xe(zlin) * Pee_zlin] * (units.Mpc)**3
             * W21_zlin.to(1./units.Mpc)
         )[0]
 
-        # Compute C_kSZ(ell), no units
+        # Compute C_kSZ(ell), no units. `prefac_scat`/`prefac_scr` are folded
+        # into the integrand *before* the value/unit split (matching
+        # get_tau_21_cross's pattern above), since their contribution must
+        # be included in the unit reattached below -- multiplying only the
+        # trapz operand by `prefac.si` (as an earlier version of this method
+        # did) silently drops that factor from `C_ell_bb21_integrand.unit`,
+        # leaving a leftover 1/time dimension that `.to(units.uK)` then fails
+        # to convert.
         if mode == 'scattering':
-            C_ells = np.array(
-                [trapz((C_ell_bb21_integrand[i] * prefac_scat.si).value, zlin)
-                for i in range(ells.size)]
-            )
+            integrand = C_ell_bb21_integrand * prefac_scat.si
         elif mode == 'screening':
-            C_ells = np.array(
-                [trapz((C_ell_bb21_integrand[i] * prefac_scr.si).value, zlin)
-                for i in range(ells.size)]
-            )
+            integrand = C_ell_bb21_integrand * prefac_scr.si
         elif mode == 'both':
-            C_ells_scat = np.array(
-                [trapz((C_ell_bb21_integrand[i] * prefac_scat.si).value, zlin)
-                for i in range(ells.size)]
-            )
-            C_ells_scr = np.array(
-                [trapz((C_ell_bb21_integrand[i] * prefac_scr.si).value, zlin)
-                for i in range(ells.size)]
-            )
-            C_ells = C_ells_scat + C_ells_scr
+            integrand = C_ell_bb21_integrand * prefac_scat.si + C_ell_bb21_integrand * prefac_scr.si
+
+        C_ells = np.array(
+            [trapz(integrand[i].value, zlin) for i in range(ells.size)]
+        )
 
         self.check_result(C_ells)
-        C_ells *= C_ell_bb21_integrand.unit
+        C_ells *= integrand.unit
 
+        # Two powers of temperature enter this cross-spectrum (Qrms/Erms for
+        # the primary B-mode leg, T0 for the 21cm brightness-temperature
+        # scaling), matching this method's own docstring ("in uK2") -- unlike
+        # get_tau_21_cross just above, which is linear in temperature.
         if not Dells:
-            return C_ells.to(units.uK)
+            return C_ells.to(units.uK**2)
         else:
-            return ells * (ells + 1.) * C_ells.to(units.uK) / 2. / np.pi
+            return ells * (ells + 1.) * C_ells.to(units.uK**2) / 2. / np.pi
 
     def check_ps(self, ps, include_zero=True):
         """

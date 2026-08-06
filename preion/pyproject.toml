@@ -1,6 +1,6 @@
 [project]
 name = "preion"
-version = "0.1.0"
+version = "0.2.0"
 description = "Electron-density-based reionisation model and kSZ/tau/BB MCMC forecast pipeline"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -39,7 +39,7 @@ build-backend = "setuptools.build_meta"
 where = ["src"]
 
 [tool.setuptools.package-data]
-"preion.forecast" = ["data/*.txt"]
+"preion.forecast" = ["data/*.txt", "sensitivity_21cm/*.txt"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -10,7 +10,7 @@ blobnames = [
 ]
 # priors
 z_max = 20.0
-
+priors = [(5., 10.), (0.1, 4.5), (2.5, 4.5), (0.05, 0.4)]
 # COSMOLOGY
 
 T_cmb = 2.7255

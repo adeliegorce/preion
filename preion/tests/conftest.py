@@ -25,7 +25,7 @@ def tiny_ells():
     ]
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def theta_true():
     return [7.0, 1.5, 3.7, 0.10]
 
@@ -34,5 +34,23 @@ def theta_true():
 def packaged_datapoints():
     """The pre-computed mock tau/kSZ/BB datapoints shipped with the
     package, for tests that need realistic data without running CAMB."""
-    from preion.forecast.datapoints import load_packaged_datapoints
-    return load_packaged_datapoints()
+    from preion.forecast.datapoints import load_autos_datapoints, _PACKAGED_DATA_DIR, _PACKAGED_LABEL
+    return load_autos_datapoints(_PACKAGED_DATA_DIR, _PACKAGED_LABEL)
+
+
+@pytest.fixture
+def packaged_cross_datapoints():
+    """The pre-computed mock tau x 21cm cross datapoints shipped with the
+    package, for tests that need realistic cross data without running
+    CAMB/plancklens."""
+    from preion.forecast.datapoints import (
+        load_cross_datapoints, _PACKAGED_DATA_DIR, _PACKAGED_CROSS_LABEL, _PACKAGED_CROSS_Z21,
+    )
+    return load_cross_datapoints(_PACKAGED_DATA_DIR, _PACKAGED_CROSS_LABEL, _PACKAGED_CROSS_Z21)
+
+
+@pytest.fixture(scope="session")
+def tiny_z21():
+    """A minimal single-redshift z21 list, for cross-forecast tests that
+    need to stay fast."""
+    return [7.0]
