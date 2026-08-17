@@ -10,11 +10,11 @@ dependencies = [
     "astropy",
     "camb",
     "ipykernel",
+    "matplotlib",
 ]
 
 [project.optional-dependencies]
 forecast = [
-    "matplotlib",
     "emcee",
     "h5py",
     "healpy",

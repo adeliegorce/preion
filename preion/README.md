@@ -34,7 +34,7 @@ cd preion
 uv venv --python 3.11   # any Python >=3.9
 source .venv/bin/activate
 uv pip install "numpy<2"  # for plancklens
-uv pip install --no-build-isolation-package plancklens -e ".[forecast]"
+uv pip install --no-build-isolation plancklens -e ".[forecast]"
 ```
 
 Developper
@@ -73,6 +73,35 @@ built during install. It has compiled extensions, so a C/Fortran toolchain
 (gcc, gfortran) needs to be available. 
 
 - `numpy` is pinned to `<2` because of `camb`'s matter-power interpolator and of `plancklens`
+
+- If `plancklens` prints `could not load wigners.so fortran shared object` at
+  import time, two things need fixing, both inside the active environment:
+
+  1. `plancklens`'s `wigners` dependency was installed without its compiled
+     extension (this can happen depending on the `numpy`/Python combination
+     used to build it). Build it in place:
+     ```bash
+     uv pip install meson ninja   # build-time only, needed by f2py's meson backend on Python >=3.12
+     cd .venv/lib/python*/site-packages/wigners
+     f2py -c -m wigners wigners.f90
+     cd -
+     uv pip uninstall meson ninja  # optional cleanup, not needed at runtime
+     ```
+     This regenerates `wigners.cpython-*.so` next to `wigners.f90`.
+
+  2. Even with that extension built, `plancklens/utils_spin.py` (as of commit
+     `2ff8f1b`) imports it as `from plancklens.wigners import wigners` — a
+     *nested* `plancklens.wigners` submodule — but `plancklens` actually
+     installs `wigners` as a top-level package, so that nested path never
+     exists. Add a shim module so the import resolves:
+     ```bash
+     cat > .venv/lib/python*/site-packages/plancklens/wigners.py << 'EOF'
+     from wigners import wigners
+     EOF
+     ```
+
+  With both in place, `import plancklens` should raise no warning
+  (`plancklens.utils_spin.HASWIGNER` will be `True`).
 
 - The `theory` module can use the `emul_sz` package to speed up the kSZ power spectrum calculation with an
 emulator. `emul_sz` is not a declared dependency as it is not available on
@@ -130,12 +159,12 @@ chain to `{output_dir}/backends/`.
 3. Read and analyse the chains with `arviz`
 
 ```bash
-preion-read-mcmc configs/config_tutorial_mcmc_autos.yaml --save-figures
+preion-read-mcmc configs/config_tutorial_mcmc_autos.yaml
 ```
 
 `preion-read-mcmc` reads the backends, prints
 convergence diagnostics (autocorrelation time, burn-in, Gelman-Rubin R-hat)
-and a bias/error summary table, and (with `--save-figures`) writes corner,
+and a bias/error summary table, and writes corner,
 trace, and triangle plots to `{output_dir}/figures/`. Each figure is titled
 with the config's `title` field, if set (falling back to its `run_label`,
 e.g. `cv_limited_tau_only`, otherwise).
@@ -207,7 +236,7 @@ tau21, cl21, cov_tau21, tautau, tau = (
 
 ```bash
 preion-run-mcmc configs/config_tutorial_mcmc_cross.yaml
-preion-read-mcmc configs/config_tutorial_mcmc_cross.yaml --save-figures
+preion-read-mcmc configs/config_tutorial_mcmc_cross.yaml
 preion-compare-mcmc config1.yaml config2.yaml --with-prior-background
 ```
 
