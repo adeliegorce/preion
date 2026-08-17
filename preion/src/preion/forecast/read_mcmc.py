@@ -322,8 +322,6 @@ def main(argv=None):
     parser = argparse.ArgumentParser(
         description="Read back and diagnose an emcee MCMC chain produced by preion-run-mcmc.")
     parser.add_argument("config", help="Path to the same YAML run config used with preion-run-mcmc. ")
-    parser.add_argument("--save-figures", action="store_true",
-                         help="Save corner/trace/posterior-predictive figures under {output_dir}/figures.")
     args = parser.parse_args(argv)
 
     cfg = load_config(args.config)
@@ -353,13 +351,12 @@ def main(argv=None):
     else:
         fig_pp = plot_autos_models(sampler, dp, diagnostics["burnin"], title=title)
 
-    if args.save_figures:
-        figure_dir = os.path.join(cfg["output_dir"], "figures")
-        os.makedirs(figure_dir, exist_ok=True)
-        label = run_label(cfg)
-        fig_corner.savefig(os.path.join(figure_dir, f"mcmc_{label}_corner.png"), dpi=220)
-        fig_trace.savefig(os.path.join(figure_dir, f"mcmc_{label}_trace.png"), dpi=220)
-        fig_pp.savefig(os.path.join(figure_dir, f"mcmc_{label}_models.png"), dpi=220)
+    figure_dir = os.path.join(cfg["output_dir"], "figures")
+    os.makedirs(figure_dir, exist_ok=True)
+    label = run_label(cfg)
+    fig_corner.savefig(os.path.join(figure_dir, f"mcmc_{label}_corner.png"), dpi=220)
+    fig_trace.savefig(os.path.join(figure_dir, f"mcmc_{label}_trace.png"), dpi=220)
+    fig_pp.savefig(os.path.join(figure_dir, f"mcmc_{label}_models.png"), dpi=220)
 
 
 def compare_main(argv=None):
