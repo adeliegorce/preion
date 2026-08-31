@@ -322,6 +322,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(
         description="Read back and diagnose an emcee MCMC chain produced by preion-run-mcmc.")
     parser.add_argument("config", help="Path to the same YAML run config used with preion-run-mcmc. ")
+    parser.add_argument("--with-zend", action="store_true", help="Whether to include zend contours.")
     args = parser.parse_args(argv)
 
     cfg = load_config(args.config)
@@ -341,6 +342,11 @@ def main(argv=None):
     flatsamples, _ = get_flat_samples(sampler, diagnostics["burnin"])
     truths = _theta_true(cfg)
     labels = _theta_labels(cfg)
+    if args.with_zend:
+        flatsamples = np.c_[flatsamples, flatsamples[:, 0] - flatsamples[:, 1]]
+        labels.append(r'$z_\mathrm{end}$')
+        truths.append(truths[0]-truths[1])
+        PARAM_NAMES.append('zend')
     summarize(flatsamples, truths, PARAM_NAMES)
 
     title = cfg_title(cfg)
