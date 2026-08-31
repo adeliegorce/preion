@@ -34,7 +34,8 @@ cd preion
 uv venv --python 3.11   # any Python >=3.9
 source .venv/bin/activate
 uv pip install "numpy<2"  # for plancklens
-uv pip install --no-build-isolation plancklens -e ".[forecast]"
+uv pip install scikit_build_core  # for plancklens
+uv pip install --no-build-isolation-package plancklens -e ".[forecast]"
 ```
 
 Developper
